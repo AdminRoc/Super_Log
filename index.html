@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUPER LOG — Warframe EE.log 分析器</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <div class="nav-logo">
+        <span class="logo-main">SUPER&nbsp;LOG</span>
+        <span class="logo-sub">EE.LOG ANALYZER</span>
+      </div>
+      <div id="tab-bar" class="nav-tabs"></div>
+    </div>
+    <div class="nav-glow"></div>
+  </nav>
+
+  <main>
+    <!-- 上传区 -->
+    <section id="dropzone">
+      <div class="dz-frame">
+        <div class="dz-icon">⬡</div>
+        <div class="dz-title">拖拽 <b>EE.log</b> 到此处，或点击选择文件</div>
+        <div class="dz-hint">日志默认位置：%LOCALAPPDATA%\Warframe\EE.log ｜ 全部解析在本地浏览器完成，不会上传</div>
+        <div id="dropzone-status"></div>
+      </div>
+      <div class="dz-scan"></div>
+    </section>
+
+    <!-- 工作区 -->
+    <section id="workspace">
+      <aside id="record-list-wrap">
+        <div class="panel-label">记录 <span class="panel-label-en">RECORDS</span></div>
+        <div id="record-list"></div>
+      </aside>
+      <div id="detail-wrap">
+        <div class="panel-label">详情 <span class="panel-label-en">DETAILS</span></div>
+        <div id="detail">
+          <div class="empty-state">上传 EE.log 后在此查看分析结果</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>SUPER LOG ｜ 夜灵 · 中断 · Profit-Taker · 仲裁 ｜ 仅读取本地日志，符合游戏使用条款</span>
+  </footer>
+
+  <input type="file" id="file-input" accept=".log,.txt" hidden>
+
+  <script src="js/utils.js"></script>
+  <script src="js/logReader.js"></script>
+  <script src="js/parsers/eidolon.js"></script>
+  <script src="js/parsers/disruption.js"></script>
+  <script src="js/parsers/profitTaker.js"></script>
+  <script src="js/parsers/arbitration.js"></script>
+  <script src="js/render/recordList.js"></script>
+  <script src="js/render/eidolonView.js"></script>
+  <script src="js/render/disruptionView.js"></script>
+  <script src="js/render/profitTakerView.js"></script>
+  <script src="js/render/arbitrationView.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
