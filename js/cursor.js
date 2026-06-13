@@ -35,12 +35,12 @@
         'transform:translate(-50%,-50%)',
         '--tx:' + tx + 'px',
         '--ty:' + ty + 'px',
-        'animation:wordFly 10s ease-out forwards',
+        'animation:wordFly 5s ease-out forwards',
         'animation-delay:' + (i * 55) + 'ms',
       ].join(';');
       document.body.appendChild(el);
       (function (node, delay) {
-        setTimeout(function () { node.remove(); }, 10500 + delay);
+        setTimeout(function () { node.remove(); }, 5500 + delay);
       })(el, i * 55);
     }
   }
