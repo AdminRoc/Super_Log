@@ -10,7 +10,9 @@
     { id: 'arbitration', label: '仲裁', en: 'ARBITRATION',   view: () => WF.arbitrationView, empty: '未找到有效的仲裁任务记录（需房主日志，时长 ≥60 秒）' },
   ];
 
-  let state = { results: null, clock: null, activeTab: 'eidolon' };
+  const _urlTab = new URLSearchParams(window.location.search).get('tab');
+  const _initTab = TABS.find((t) => t.id === _urlTab) ? _urlTab : 'eidolon';
+  let state = { results: null, clock: null, activeTab: _initTab };
   const $ = (id) => document.getElementById(id);
 
   function init() {
@@ -82,7 +84,10 @@
             (clock.approx && clock.available ? '<br><span class="muted">日志内无系统时间行，绝对时间按文件修改时间估算（前缀 ≈）</span>' : '');
 
           document.body.classList.add('has-data');
-          const firstWithData = TABS.find((t) => state.results[t.id].length) || TABS[0];
+          const urlTabHasData = _urlTab && state.results[_urlTab] && state.results[_urlTab].length;
+          const firstWithData = urlTabHasData
+            ? TABS.find((t) => t.id === _urlTab)
+            : (TABS.find((t) => state.results[t.id].length) || TABS[0]);
           switchTab(firstWithData.id);
         } catch (err) {
           statusEl.textContent = `结果处理失败：${err.message}`;

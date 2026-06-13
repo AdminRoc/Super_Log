@@ -7,5 +7,6 @@
       "runtimeArgs": ["-y", "http-server", "-p", "8923", "-c-1"],
       "port": 8923
     }
-  ]
+  ],
+  "autoVerify": false
 }
