@@ -1,4 +1,5 @@
-/* 仲裁详情视图：时长/无人机/期望母液 + 敌人存活曲线与无人机时间线 */
+/* 仲裁详情视图 — 参考 wxhn1225/warframe-arbitration 展示逻辑
+ * 布局：评分徽章 + 核心指标网格 + 母液细项 + 分轮表格 */
 window.WF = window.WF || {};
 
 WF.arbitrationView = (function () {
@@ -7,60 +8,127 @@ WF.arbitrationView = (function () {
   function summary(rec) {
     return {
       title: `仲裁 ${rec.missionTypeName}${rec.name ? ' · ' + rec.name : ''}`,
-      sub: `时长 ${U.fmtDurationLong(rec.duration)} ｜ 无人机 ${rec.droneCount} ｜ 期望母液 ${rec.essence.total.toFixed(1)}`,
+      sub: `${U.fmtDurationLong(rec.duration)} ｜ 无人机 ${rec.droneCount} ｜ 评分 ${rec.score} ${rec.scoreLabel}`,
     };
   }
 
   function render(container, rec) {
     container.innerHTML = '';
 
-    const hero = U.el('div', 'hero-row');
-    hero.appendChild(stat('任务时长', U.fmtDurationLong(rec.duration), 'big'));
-    hero.appendChild(stat('类型', rec.missionTypeName, 'accent'));
-    if (rec.rounds > 0) hero.appendChild(stat('轮次/波次', `${rec.rounds}`, ''));
-    hero.appendChild(stat('磁盾无人机', `${rec.droneCount}`, 'accent'));
-    hero.appendChild(stat('期望赋灵母液', rec.essence.total.toFixed(1), 'big'));
-    hero.appendChild(stat('满 Buff 期望', rec.essence.fullBuffTotal.toFixed(1), ''));
-    hero.appendChild(stat('母液/小时', rec.essence.perHour.toFixed(1), ''));
-    container.appendChild(hero);
+    /* ─── 第一行：评分徽章 + 任务元信息 ─── */
+    const topRow = U.el('div', 'arb-top-row');
 
-    const noteBits = [
-      `期望母液 = 无人机 ${rec.droneCount}×6% (${rec.essence.fromDrones.toFixed(1)})` +
-      (rec.rounds > 0 ? ` + 轮次 ${rec.rounds}×1.3 (${rec.essence.fromRounds.toFixed(1)})` : ''),
-      '满 Buff = 蓝盒×2 · 富足×1.18 · 黄盒×2 · 祝福×1.25（仅作用于无人机掉落项）',
+    // 评分徽章
+    const badge = U.el('div', 'arb-score-badge grade-' + rec.scoreLabel.toLowerCase());
+    badge.appendChild(U.el('div', 'arb-score-label', rec.scoreLabel));
+    badge.appendChild(U.el('div', 'arb-score-num', String(rec.score)));
+    badge.appendChild(U.el('div', 'arb-score-sub', '/ 100'));
+    badge.title = `满 Buff 期望母液 / 小时：${rec.essence.fullBuffPerHour.toFixed(1)}`;
+    topRow.appendChild(badge);
+
+    // 任务元信息
+    const meta = U.el('div', 'arb-meta');
+    const metaTitle = U.el('div', 'arb-meta-title');
+    metaTitle.textContent = [rec.name, rec.missionTypeName].filter(Boolean).join(' · ');
+    meta.appendChild(metaTitle);
+
+    const metaSubs = [
+      `任务时长 ${U.fmtDurationLong(rec.duration)}`,
+      rec.rounds > 0 ? `${rec.rounds} ${rec.missionType === 'survival' ? '轮' : '波'}` : null,
+      !rec.complete ? '（未检测到结算，时长为估算值）' : null,
+    ].filter(Boolean);
+    metaSubs.forEach((s) => meta.appendChild(U.el('div', 'arb-meta-sub', s)));
+
+    // 评分说明
+    const gradeDesc = {
+      S: '极优 — 满 Buff ≥ 800 精华/小时',
+      A: '良好 — 满 Buff 600-799 精华/小时',
+      B: '一般 — 满 Buff 400-599 精华/小时',
+      C: '较差 — 满 Buff 200-399 精华/小时',
+      D: '低效 — 满 Buff < 200 精华/小时',
+    };
+    meta.appendChild(U.el('div', 'arb-grade-desc', gradeDesc[rec.scoreLabel] || ''));
+    topRow.appendChild(meta);
+    container.appendChild(topRow);
+
+    /* ─── 第二行：8 格核心指标 ─── */
+    const grid = U.el('div', 'arb-metrics-grid');
+    const metrics = [
+      { label: '任务总时长',    value: U.fmtDurationLong(rec.duration),               cls: 'big' },
+      { label: '无人机生成数', value: String(rec.droneCount),                          cls: 'accent' },
+      { label: '敌人生成数',   value: String(rec.maxSpawned),                         cls: '' },
+      { label: '每分钟无人机', value: rec.dronesPerMin.toFixed(2),                    cls: '' },
+      { label: '期望赋灵母液', value: rec.essence.total.toFixed(2),                   cls: 'big' },
+      { label: '满 Buff 期望', value: rec.essence.fullBuffTotal.toFixed(2),           cls: 'accent' },
+      { label: '母液 / 小时',  value: rec.essence.perHour.toFixed(1),                 cls: '' },
+      { label: '母液 / 分钟',  value: rec.essence.perMin.toFixed(3),                 cls: '' },
     ];
-    if (!rec.complete) noteBits.push('该任务未检测到结算事件，时长按状态结束行估算');
-    container.appendChild(U.el('div', 'note', noteBits.join(' ｜ ')));
-
-    // ---- 时间线图：敌人存活曲线 + 无人机散点 + 轮次边界 ----
-    if (rec.ticking.length > 1 || rec.drones.length) {
-      container.appendChild(timelineChart(rec));
+    if (rec.rounds > 0) {
+      metrics.splice(4, 0, { label: rec.missionType === 'survival' ? '生存轮次' : '防御波次', value: String(rec.rounds), cls: '' });
+      metrics.pop(); // 保持 8 格
     }
+    metrics.forEach(({ label, value, cls }) => {
+      const cell = U.el('div', 'stat ' + cls);
+      cell.appendChild(U.el('div', 'stat-value', value));
+      cell.appendChild(U.el('div', 'stat-label', label));
+      grid.appendChild(cell);
+    });
+    container.appendChild(grid);
 
-    // ---- 每轮无人机表 ----
+    /* ─── 第三行：母液计算细项 ─── */
+    const essBox = U.el('div', 'arb-ess-box');
+    essBox.appendChild(U.el('div', 'section-title', '赋灵母液计算'));
+
+    const essRows = [
+      ['无人机贡献', `${rec.droneCount} × 6% = ${rec.essence.fromDrones.toFixed(2)}`],
+      ['轮次贡献',   rec.rounds > 0 ? `${rec.rounds} × 1.3 = ${rec.essence.fromRounds.toFixed(2)}` : '—'],
+      ['普通期望',   `${rec.essence.total.toFixed(2)}`],
+      ['满 Buff 期望', `${rec.essence.fullBuffTotal.toFixed(2)}（无人机项 × 5.9 + 轮次项）`],
+      ['Buff 组成', '蓝盒 ×2 · 富足 ×1.18 · 黄盒 ×2 · 祝福 ×1.25 = 5.9'],
+      ['满 Buff / 小时', `${rec.essence.fullBuffPerHour.toFixed(1)}`],
+    ];
+    const essTable = U.el('div', 'arb-ess-rows');
+    essRows.forEach(([k, v]) => {
+      const row = U.el('div', 'arb-ess-row');
+      row.appendChild(U.el('span', 'arb-ess-key', k));
+      row.appendChild(U.el('span', 'arb-ess-val', v));
+      essTable.appendChild(row);
+    });
+    essBox.appendChild(essTable);
+    container.appendChild(essBox);
+
+    /* ─── 第四行：分轮无人机分布表 ─── */
     if (rec.boundaries.length) {
+      container.appendChild(U.el('div', 'section-title', '各轮无人机分布'));
       const tbl = U.el('table', 'round-table');
-      tbl.innerHTML = '<thead><tr><th>轮次/波次</th><th>完成于</th><th>本段无人机</th><th>累计无人机</th></tr></thead>';
+      tbl.innerHTML = `<thead><tr>
+        <th>轮次 / 波次</th><th>完成时间</th>
+        <th>本段无人机</th><th>累计无人机</th><th>本段期望母液</th>
+      </tr></thead>`;
       const tbody = U.el('tbody');
       let prev = 0, cum = 0;
       rec.boundaries.forEach((b) => {
         const inSeg = rec.drones.filter((d) => d >= prev && d < b.t).length;
         cum += inSeg;
+        const segEss = (inSeg * BASE_DROP + EXTRA_PER_ROUND).toFixed(2);
         const tr = U.el('tr');
         tr.appendChild(U.el('td', 'td-idx', b.label));
         tr.appendChild(U.el('td', 'td-mono', U.fmtDurationLong(b.t)));
         tr.appendChild(U.el('td', 'td-mono', String(inSeg)));
         tr.appendChild(U.el('td', 'td-mono', String(cum)));
+        tr.appendChild(U.el('td', 'td-mono', segEss));
         tbody.appendChild(tr);
         prev = b.t;
       });
+      // 末段
       const tail = rec.drones.filter((d) => d >= prev).length;
       if (tail > 0) {
         const tr = U.el('tr');
-        tr.appendChild(U.el('td', 'td-idx', '末段(未结轮)'));
+        tr.appendChild(U.el('td', 'td-idx', '末段（未结算）'));
         tr.appendChild(U.el('td', 'td-mono', '—'));
         tr.appendChild(U.el('td', 'td-mono', String(tail)));
         tr.appendChild(U.el('td', 'td-mono', String(cum + tail)));
+        tr.appendChild(U.el('td', 'td-mono', '—'));
         tbody.appendChild(tr);
       }
       tbl.appendChild(tbody);
@@ -70,54 +138,12 @@ WF.arbitrationView = (function () {
     }
 
     container.appendChild(U.el('div', 'note',
-      '注：无人机与轮次统计依赖房主(host)日志；MonitoredTicking 曲线为日志记录的存活敌人快照（敌人饱和度）。'));
+      '无人机统计与轮次边界依赖房主（Host）日志。评分基于满 Buff 期望母液/小时（S ≥ 800 / A 600-799 / B 400-599 / C 200-399 / D < 200）。'));
   }
 
-  function timelineChart(rec) {
-    const W = 820, H = 200, padL = 40, padB = 22, padT = 12;
-    const dur = rec.duration;
-    const x = (sec) => padL + (sec / dur) * (W - padL - 8);
-    const maxV = Math.max(1, ...rec.ticking.map((p) => p.v));
-    const y = (v) => padT + (1 - v / maxV) * (H - padT - padB);
-
-    let svg = `<svg viewBox="0 0 ${W} ${H}" class="arb-chart">`;
-    // 轮次边界竖线
-    rec.boundaries.forEach((b) => {
-      svg += `<line x1="${x(b.t)}" y1="${padT}" x2="${x(b.t)}" y2="${H - padB}" class="arb-boundary"/>` +
-        `<text x="${x(b.t) + 3}" y="${padT + 10}" class="arb-blabel">${U.escapeHtml(b.label)}</text>`;
-    });
-    // 敌人存活曲线
-    if (rec.ticking.length > 1) {
-      const pts = rec.ticking.map((p) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
-      const first = rec.ticking[0], last = rec.ticking[rec.ticking.length - 1];
-      svg += `<polygon points="${x(first.t).toFixed(1)},${H - padB} ${pts} ${x(last.t).toFixed(1)},${H - padB}" class="arb-area"/>`;
-      svg += `<polyline points="${pts}" class="arb-line"/>`;
-    }
-    // 无人机散点（底部刻度带）
-    rec.drones.forEach((d) => {
-      svg += `<circle cx="${x(d).toFixed(1)}" cy="${H - padB + 8}" r="2.4" class="arb-drone"><title>无人机 @ ${U.fmtDurationLong(d)}</title></circle>`;
-    });
-    // 坐标轴标注
-    svg += `<text x="${padL - 6}" y="${y(maxV) + 4}" class="arb-axis" text-anchor="end">${maxV}</text>`;
-    svg += `<text x="${padL - 6}" y="${H - padB + 4}" class="arb-axis" text-anchor="end">0</text>`;
-    for (let i = 0; i <= 4; i++) {
-      const sec = (dur / 4) * i;
-      svg += `<text x="${x(sec)}" y="${H - 4}" class="arb-axis" text-anchor="middle">${U.fmtDurationLong(sec)}</text>`;
-    }
-    svg += `<text x="${W - 10}" y="${padT + 10}" class="arb-legend" text-anchor="end">— 存活敌人 ● 无人机生成</text>`;
-    svg += '</svg>';
-
-    const box = WF.utils.el('div', 'chart-box');
-    box.innerHTML = svg;
-    return box;
-  }
-
-  function stat(label, value, cls) {
-    const d = U.el('div', 'stat ' + (cls || ''));
-    d.appendChild(U.el('div', 'stat-value', value));
-    d.appendChild(U.el('div', 'stat-label', label));
-    return d;
-  }
+  // 内联常量供模板计算（避免引用解析器内部）
+  const BASE_DROP       = 0.06;
+  const EXTRA_PER_ROUND = 1.3;
 
   return { render, summary };
 })();

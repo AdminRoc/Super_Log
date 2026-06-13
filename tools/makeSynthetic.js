@@ -9,8 +9,9 @@ push(0, 'Sys [Diag]: Current time: Mon Jun 08 20:00:00 2026 [UTC: Tue Jun 09 00:
 // ===== 中断任务：45 轮 =====
 push(5, 'Sys [Info]: ===[ Game successfully connected to: /Lotus/Levels/Proc/Corpus/CorpusShipDisruption/AAAA.lp ]===');
 push(2, 'Script [Info]: ThemedSquadOverlay.lua: Mission name: APOLLO (Lua)');
-push(3, 'Script [Info]: SentientArtifactMission.lua: ModeState = 1');
-push(10, 'Script [Info]: SentientArtifactMission.lua: ModeState = 2');
+push(3, 'Sys [Info]: GameRulesImpl - changing state from SS_WAITING_FOR_PLAYERS to SS_STARTED');
+push(2, 'Script [Info]: SentientArtifactMission.lua: ModeState = 1');
+push(8, 'Script [Info]: SentientArtifactMission.lua: ModeState = 2');
 for (let r = 1; r <= 45; r++) {
   push(8, 'Script [Info]: SentientArtifactMission.lua: ModeState = 3');
   for (let c = 0; c < 4; c++) {

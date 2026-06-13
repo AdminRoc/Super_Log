@@ -1,64 +1,78 @@
 /* 仲裁 (Arbitration) 解析器
  * 模式来源：wxhn1225/warframe-arbitration（web/src/lib/eelog/parser.ts）
  * 识别：任务名行含 "- 仲裁"（中文客户端）或节点 "X_EliteAlert"；
- * 统计：磁盾无人机(CorpusEliteShieldDroneAgent)生成、敌人存活曲线(MonitoredTicking)、
+ * 统计：磁盾无人机(CorpusEliteShieldDroneAgent)、敌人生成数(maxSpawned via OnAgentCreated Spawned)、
  *       轮次边界（生存 tier / 防御 wave / 镜像防御 wave / 拦截轮）、任务时长；
- * 期望赋灵母液：无人机×6% + 轮次×(1+0.1×3)；满 buff 时无人机项 ×5.9(=2×1.18×2×1.25)。
+ * 评分：0-100 分制，基于满 Buff 赋灵母液/小时，≥90 对应原项目 S 级。
  */
 window.WF = window.WF || {};
 
 WF.ArbitrationParser = (function () {
   const RE = {
-    missionName: /ThemedSquadOverlay\.lua: Mission name:\s*(.+?)\s*$/,
-    cachedName: /ThemedSquadOverlay\.lua: Cached mission name=(.+?)\s*$/,
-    voteName: /ThemedSquadOverlay\.lua: ShowMissionVote\s+(.+?)\s*$/,
-    hostLoadingNode: /ThemedSquadOverlay\.lua: Host loading .*"name":"([^"]+)_EliteAlert"/,
-    stateStarted: /GameRulesImpl - changing state from SS_WAITING_FOR_PLAYERS to SS_STARTED/,
-    stateEnding: /GameRulesImpl - changing state from SS_STARTED to SS_ENDING/,
-    eomInit: /EndOfMatch\.lua: Initialize\b/,
-    allExtracting: /ExtractionTimer\.lua: EOM: All players extracting/,
-    shieldDrone: /AI \[Info\]: OnAgentCreated \/Npc\/CorpusEliteShieldDroneAgent\d*\b/,
-    onAgentCreated: /AI \[Info\]: OnAgentCreated\b/,
-    spawned: /\bSpawned\s+(\d+)\b/,
-    monitoredTicking: /\bMonitoredTicking\s+(\d+)\b/,
-    defenseWave: /WaveDefend\.lua: Defense wave:\s*(\d+)\b/,
-    loopDefenseWave: /LoopDefend\.lua: Loop Defense wave:\s*(\d+)\b/,
-    interceptionRound: /HudRedux\.lua: Queuing new transmission: InterNewRoundLotusTransmission\b/,
+    missionName:      /ThemedSquadOverlay\.lua: Mission name:\s*(.+?)\s*$/,
+    cachedName:       /ThemedSquadOverlay\.lua: Cached mission name=(.+?)\s*$/,
+    voteName:         /ThemedSquadOverlay\.lua: ShowMissionVote\s+(.+?)\s*$/,
+    hostLoadingNode:  /ThemedSquadOverlay\.lua: Host loading .*"name":"([^"]+)_EliteAlert"/,
+    stateStarted:     /GameRulesImpl - changing state from SS_WAITING_FOR_PLAYERS to SS_STARTED/,
+    stateEnding:      /GameRulesImpl - changing state from SS_STARTED to SS_ENDING/,
+    eomInit:          /EndOfMatch\.lua: Initialize\b/,
+    allExtracting:    /ExtractionTimer\.lua: EOM: All players extracting/,
+    shieldDrone:      /AI \[Info\]: OnAgentCreated \/Npc\/CorpusEliteShieldDroneAgent\d*\b/,
+    onAgentCreated:   /AI \[Info\]: OnAgentCreated\b/,
+    spawned:          /\bSpawned\s+(\d+)\b/,
+    defenseWave:      /WaveDefend\.lua: Defense wave:\s*(\d+)\b/,
+    loopDefenseWave:  /LoopDefend\.lua: Loop Defense wave:\s*(\d+)\b/,
+    interceptionRound:/HudRedux\.lua: Queuing new transmission: InterNewRoundLotusTransmission\b/,
     rewardTransitionOut: /DefenseReward\.lua: DefenseReward::TransitionOut\b/,
-    survivalTier: /SurvivalMission\.lua: Survival: Gave reward tier (\d+) at ([\d.]+)/,
-    connected: /Game successfully connected to:/,
+    survivalTier:     /SurvivalMission\.lua: Survival: Gave reward tier (\d+) at ([\d.]+)/,
+    connected:        /Game successfully connected to:/,
   };
   const ARB_NAME_MARK = '- 仲裁';
 
   // 期望母液常量（来源 warframe-arbitration metrics.ts）
-  const BASE_DROP = 0.06;
-  const EXTRA_PER_ROUND = 1 + 0.1 * 3;       // 每轮 1 + 10% 概率额外掉 3
-  const FULL_BUFF_MUL = 2 * 1.18 * 2 * 1.25; // 蓝盒×富足×黄盒×祝福 = 5.9
+  const BASE_DROP      = 0.06;                 // 每个无人机基础期望
+  const EXTRA_PER_ROUND = 1 + 0.1 * 3;        // 每轮 1.3（1 + 10% 概率额外掉 3 个）
+  const FULL_BUFF_MUL  = 2 * 1.18 * 2 * 1.25; // 蓝盒×富足×黄盒×祝福 = 5.9（仅作用于无人机项）
 
   const TYPE_NAMES = {
     survival: '生存', defense: '防御', loopDefense: '镜像防御',
     interception: '拦截', rounds: '轮次型', unknown: '未知',
   };
 
+  /* 0-100 评分（基于满 Buff 母液/小时，对齐原项目 S≥800/hr = 本项目 ≥90 分） */
+  function computeScore(perHour) {
+    if (perHour >= 1200) return 100;
+    if (perHour >= 800)  return Math.round(90 + (perHour - 800)  / 400 * 10);
+    if (perHour >= 600)  return Math.round(75 + (perHour - 600)  / 200 * 14);
+    if (perHour >= 400)  return Math.round(55 + (perHour - 400)  / 200 * 19);
+    if (perHour >= 200)  return Math.round(35 + (perHour - 200)  / 200 * 19);
+    return Math.round((perHour / 200) * 34);
+  }
+  function scoreLabel(s) {
+    if (s >= 90) return 'S';
+    if (s >= 75) return 'A';
+    if (s >= 55) return 'B';
+    if (s >= 35) return 'C';
+    return 'D';
+  }
+
   function create() {
     const records = [];
-    let m = null; // 当前仲裁任务
+    let m = null;
 
     function newMission(t, name) {
       m = {
         nameLineT: t,
-        name: name || null,
-        nodeId: null,
-        startedT: null,
-        type: 'unknown',
-        drones: [],            // 无人机生成时间
+        name:      name || null,
+        nodeId:    null,
+        startedT:  null,
+        type:      'unknown',
+        drones:    [],     // 无人机生成时刻（相对于 startedT 的秒数）
         droneCount: 0,
-        maxSpawned: 0,
-        ticking: [],           // {t, v} 每秒最大存活数
-        lastTickBucket: -1,
-        boundaries: [],        // 轮次边界 {t, label}
-        maxWave: 0,
-        endT: null,
+        maxSpawned: 0,     // 累计敌人生成数（取 OnAgentCreated Spawned 字段最大值）
+        boundaries: [],    // 轮次边界 {t(相对), label}
+        maxWave:    0,
+        endT:       null,
       };
     }
 
@@ -67,32 +81,39 @@ WF.ArbitrationParser = (function () {
       const duration = endT - m.startedT;
       const valid = viaEom ? duration >= 60 : (duration >= 60 && m.droneCount > 0);
       if (valid) {
-        const rounds = m.boundaries.length;
-        const fromDrones = m.droneCount * BASE_DROP;
-        const fromRounds = rounds * EXTRA_PER_ROUND;
+        const rounds      = m.boundaries.length;
+        const fromDrones  = m.droneCount * BASE_DROP;
+        const fromRounds  = rounds * EXTRA_PER_ROUND;
+        const total       = fromDrones + fromRounds;
+        const fullBuffTotal = fromDrones * FULL_BUFF_MUL + fromRounds;
+        const perHour     = duration > 0 ? total * 3600 / duration : 0;
+        const fullBuffPerHour = duration > 0 ? fullBuffTotal * 3600 / duration : 0;
+        const perMin      = duration > 0 ? total * 60 / duration : 0;
+        const dronesPerMin = duration > 0 ? m.droneCount / (duration / 60) : 0;
+        const score       = computeScore(fullBuffPerHour);
+
         records.push({
-          type: 'arbitration',
-          startT: m.startedT,
+          type:             'arbitration',
+          startT:           m.startedT,
           endT,
           duration,
-          name: m.name,
-          nodeId: m.nodeId,
-          missionType: m.type,
-          missionTypeName: TYPE_NAMES[m.type] || m.type,
-          droneCount: m.droneCount,
-          drones: m.drones,
-          maxSpawned: m.maxSpawned,
-          ticking: m.ticking,
-          boundaries: m.boundaries,
+          name:             m.name,
+          nodeId:           m.nodeId,
+          missionType:      m.type,
+          missionTypeName:  TYPE_NAMES[m.type] || m.type,
+          droneCount:       m.droneCount,
+          drones:           m.drones,
+          maxSpawned:       m.maxSpawned,
+          boundaries:       m.boundaries,
           rounds,
+          dronesPerMin,
+          complete:         viaEom,
           essence: {
-            fromDrones,
-            fromRounds,
-            total: fromDrones + fromRounds,
-            fullBuffTotal: fromDrones * FULL_BUFF_MUL + fromRounds,
-            perHour: duration > 0 ? (fromDrones + fromRounds) * 3600 / duration : 0,
+            fromDrones, fromRounds, total,
+            fullBuffTotal, perHour, fullBuffPerHour, perMin,
           },
-          complete: viaEom,
+          score,
+          scoreLabel: scoreLabel(score),
         });
       }
       m = null;
@@ -114,17 +135,12 @@ WF.ArbitrationParser = (function () {
           }
         }
         if (nm) {
-          if (m && m.startedT != null) finalize(t, false); // 上一场未正常收尾
+          if (m && m.startedT != null) finalize(t, false);
           if (!m || m.startedT != null) newMission(t, nm);
           else m.name = nm;
           return;
         }
         if (!m) return;
-
-        // 其它关卡完整加载且任务尚未开始 → 取消候选
-        if (m.startedT == null && RE.connected.test(line)) {
-          // 保留：仲裁加载本身也会触发 connected；以 SS_STARTED 为准
-        }
 
         if (m.startedT == null) {
           if (RE.stateStarted.test(line)) m.startedT = t;
@@ -132,28 +148,19 @@ WF.ArbitrationParser = (function () {
         }
 
         // ---- 任务内事件 ----
+        // 磁盾无人机（优先检测，比 onAgentCreated 更具体）
         if (RE.shieldDrone.test(line)) {
           m.droneCount++;
           m.drones.push(t - m.startedT);
           return;
         }
+        // 普通敌人生成（仅追踪累计生成数 maxSpawned，不收集 ticking 数据）
         if (RE.onAgentCreated.test(line)) {
           const sp = RE.spawned.exec(line);
           if (sp) m.maxSpawned = Math.max(m.maxSpawned, parseInt(sp[1], 10));
-          const mt = RE.monitoredTicking.exec(line);
-          if (mt) {
-            const bucket = Math.floor(t - m.startedT);
-            const v = parseInt(mt[1], 10);
-            if (bucket !== m.lastTickBucket) {
-              m.ticking.push({ t: bucket, v });
-              m.lastTickBucket = bucket;
-            } else if (m.ticking.length) {
-              const last = m.ticking[m.ticking.length - 1];
-              if (v > last.v) last.v = v;
-            }
-          }
           return;
         }
+
         let r;
         if ((r = RE.survivalTier.exec(line))) {
           m.type = 'survival';

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUPER LOG — 分析器</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <div class="nav-logo">
+        <span class="logo-main">SUPER&nbsp;LOG</span>
+        <span class="logo-sub">EE.LOG ANALYZER</span>
+      </div>
+      <div id="tab-bar" class="nav-tabs"></div>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link primary">主页</a>
+        <a href="https://wfspeed.run/" class="nav-link speed" target="_blank" rel="noopener">查看竞速榜单</a>
+      </div>
+    </div>
+    <div class="nav-glow"></div>
+  </nav>
+
+  <main>
+    <!-- 上传区 -->
+    <section id="dropzone">
+      <div class="dz-frame">
+        <div class="dz-icon">⬡</div>
+        <div class="dz-title">拖拽 <b>EE.log</b> 到此处，或点击选择文件</div>
+        <div class="dz-hint">日志默认位置：%LOCALAPPDATA%\Warframe\EE.log ｜ 全部解析在本地浏览器完成，不会上传</div>
+        <div id="dropzone-status"></div>
+      </div>
+      <div class="dz-scan"></div>
+    </section>
+
+    <!-- 工作区 -->
+    <section id="workspace">
+      <aside id="record-list-wrap">
+        <div class="panel-label">记录 <span class="panel-label-en">RECORDS</span></div>
+        <div id="record-list"></div>
+      </aside>
+      <div id="detail-wrap">
+        <div class="panel-label">详情 <span class="panel-label-en">DETAILS</span></div>
+        <div id="detail">
+          <div class="empty-state">上传 EE.log 后在此查看分析结果</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-glow-line"></div>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="footer-logo">SUPER LOG</span>
+        <span class="footer-tagline">EE.LOG ANALYZER</span>
+      </div>
+      <div class="footer-notice-wrap">
+        <span class="footer-notice">本页面仅供 CSC 联盟内部使用</span>
+      </div>
+      <div class="footer-links">
+        <a href="index.html" class="footer-link">主页</a>
+        <span class="footer-sep">·</span>
+        <a href="https://wfspeed.run/" class="footer-link" target="_blank" rel="noopener">竞速榜单</a>
+      </div>
+      <div class="footer-copy">© 2025 SUPER LOG · 仅读取本地日志，完全离线运行，符合游戏使用条款</div>
+    </div>
+  </footer>
+
+  <input type="file" id="file-input" accept=".log,.txt" hidden>
+
+  <script src="js/utils.js"></script>
+  <script src="js/logReader.js"></script>
+  <script src="js/parsers/eidolon.js"></script>
+  <script src="js/parsers/disruption.js"></script>
+  <script src="js/parsers/profitTaker.js"></script>
+  <script src="js/parsers/arbitration.js"></script>
+  <script src="js/render/recordList.js"></script>
+  <script src="js/render/eidolonView.js"></script>
+  <script src="js/render/disruptionView.js"></script>
+  <script src="js/render/profitTakerView.js"></script>
+  <script src="js/render/arbitrationView.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
