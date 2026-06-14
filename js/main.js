@@ -4,10 +4,11 @@
   const U = WF.utils;
 
   const TABS = [
-    { id: 'eidolon',     label: '夜灵', en: 'EIDOLON',       view: () => WF.eidolonView,     empty: '未找到满足 6×3 条件的夜灵捕获记录' },
-    { id: 'disruption',  label: '中断', en: 'DISRUPTION',    view: () => WF.disruptionView,  empty: '未找到完成 ≥45 轮且成功结算的中断任务（需房主日志）' },
+    { id: 'general',     label: '通用',  en: 'GENERAL',       view: () => WF.generalView,     empty: '未找到有效的通用任务记录（仅记录正常结算、非大厅/PVP 任务）' },
+    { id: 'eidolon',     label: '夜灵',  en: 'EIDOLON',       view: () => WF.eidolonView,     empty: '未找到满足 6×3 条件的夜灵捕获记录' },
+    { id: 'disruption',  label: '中断',  en: 'DISRUPTION',    view: () => WF.disruptionView,  empty: '未找到完成 ≥45 轮且成功结算的中断任务（需房主日志）' },
     { id: 'profitTaker', label: '大蜘蛛', en: 'PROFIT-TAKER', view: () => WF.profitTakerView, empty: '未找到完整的 Profit-Taker 击杀记录' },
-    { id: 'arbitration', label: '仲裁', en: 'ARBITRATION',   view: () => WF.arbitrationView, empty: '未找到有效的仲裁任务记录（需房主日志，时长 ≥60 秒）' },
+    { id: 'arbitration', label: '仲裁',  en: 'ARBITRATION',   view: () => WF.arbitrationView, empty: '未找到有效的仲裁任务记录（需房主日志，时长 ≥60 秒）' },
   ];
 
   const _urlTab = new URLSearchParams(window.location.search).get('tab');
@@ -62,12 +63,14 @@
       const disruption  = WF.DisruptionParser.create();
       const profitTaker = WF.ProfitTakerParser.create();
       const arbitration = WF.ArbitrationParser.create();
-      const parsers = [eidolon, disruption, profitTaker, arbitration];
+      const general     = WF.GeneralParser.create();
+      const parsers = [eidolon, disruption, profitTaker, arbitration, general];
 
       function onDone(scan) {
         try {
           const clock = WF.logReader.makeClock(scan, file.lastModified);
           state.results = {
+            general:     general.results(),
             eidolon:     eidolon.results(),
             disruption:  disruption.results(),
             profitTaker: profitTaker.results(),
@@ -79,7 +82,7 @@
           const r = state.results;
           statusEl.innerHTML =
             `<b>${U.escapeHtml(file.name)}</b>（${sizeMB} MB，${scan.lineCount.toLocaleString()} 行，${ms} ms）` +
-            ` — 夜灵 <b>${r.eidolon.length}</b> ｜ 中断 <b>${r.disruption.length}</b>` +
+            ` — 通用 <b>${r.general.length}</b> ｜ 夜灵 <b>${r.eidolon.length}</b> ｜ 中断 <b>${r.disruption.length}</b>` +
             ` ｜ 大蜘蛛 <b>${r.profitTaker.length}</b> ｜ 仲裁 <b>${r.arbitration.length}</b>` +
             (clock.approx && clock.available ? '<br><span class="muted">日志内无系统时间行，绝对时间按文件修改时间估算（前缀 ≈）</span>' : '');
 
