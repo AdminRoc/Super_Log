@@ -4,7 +4,9 @@
 @font-face {
   font-family: 'XSZT';
   src: url('../fonts/xszt.ttf') format('truetype');
-  font-display: swap;
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
 }
 
 :root {

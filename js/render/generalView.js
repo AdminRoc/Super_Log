@@ -33,25 +33,28 @@ WF.generalView = (function () {
     timingBox.appendChild(U.el('div', 'gen-timing-title', '时间节点'));
     const timingGrid = U.el('div', 'gen-timing-grid');
 
-    if (clock && clock.available) {
-      const absDate = clock.toDate(rec.startT);
+    // 优先用记录自带的精确日期（多会话场景），回退到全局 clock
+    const _recDate = (t, recDate) => recDate || (clock && clock.available ? clock.toDate(t) : null);
+    const approx = clock ? clock.approx : true;
+    {
+      const absDate = _recDate(rec.startT, rec.startDate);
       if (absDate) {
         _timingRow(timingGrid, '任务开始时刻',
-          U.fmtAbsTime(absDate, clock.approx),
+          U.fmtAbsTime(absDate, approx),
           '由日志内 Current time 行换算的实际时钟时间，精度约 ±1s');
       }
       if (rec.firstFrameT != null) {
-        const ffDate = clock.toDate(rec.firstFrameT);
+        const ffDate = _recDate(rec.firstFrameT, rec.firstFrameDate);
         if (ffDate) {
           _timingRow(timingGrid, '首帧时刻',
-            U.fmtAbsTime(ffDate, clock.approx),
+            U.fmtAbsTime(ffDate, approx),
             'HUD REDUX 首次渲染（载入完成 UI 就绪）的实际时刻');
         }
       }
-      const endDate = clock.toDate(rec.endT);
+      const endDate = _recDate(rec.endT, rec.endDate);
       if (endDate) {
         _timingRow(timingGrid, '尾帧时刻',
-          U.fmtAbsTime(endDate, clock.approx),
+          U.fmtAbsTime(endDate, approx),
           'EOM 结算信号触发时刻（任务成功/提取屏出现瞬间）');
       }
     }
@@ -79,7 +82,7 @@ WF.generalView = (function () {
     const hasWaves    = rec.waves      && rec.waves.length      > 0;
     const hasSurvival = rec.survivalSegs && rec.survivalSegs.length > 0;
     const hasInter    = rec.interSegs  && rec.interSegs.length  > 0;
-    const hasKillData = rec.kills > 0 || rec.spawned > 0;
+    const hasKillData = rec.spawned > 0;  // 击杀数不可靠（EE.log 不记录玩家击杀），以生成数为准
 
     if (hasWaves) {
       _renderWaveSection(container, rec);
@@ -274,18 +277,15 @@ WF.generalView = (function () {
     container.appendChild(section);
   }
 
-  // ── 单轮任务击杀概况 ──────────────────────────────────────
+  // ── 单轮任务敌人生成概况 ─────────────────────────────────
   function _renderKillSummary(container, rec) {
     const killSection = U.el('div', 'gen-section');
-    killSection.appendChild(U.el('div', 'gen-section-title', '击杀概况'));
+    killSection.appendChild(U.el('div', 'gen-section-title', '敌人生成概况'));
     const killRow = U.el('div', 'hero-row');
-    killRow.appendChild(_st('击杀', String(rec.kills), 'accent'));
-    if (rec.spawned > 0) {
-      killRow.appendChild(_st('生成（近似）', String(rec.spawned), ''));
-      const ratio = ((rec.kills / rec.spawned) * 100).toFixed(0) + '%';
-      killRow.appendChild(_st('击杀率', ratio, ''));
-    }
+    killRow.appendChild(_st('生成（近似）', String(rec.spawned), 'accent'));
     killSection.appendChild(killRow);
+    killSection.appendChild(U.el('div', 'note',
+      'EE.log 不记录玩家击杀个别敌人的事件；仅防御/波次任务可通过"生成−剩余"推算击杀数。'));
     container.appendChild(killSection);
   }
 

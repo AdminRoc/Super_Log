@@ -72,9 +72,10 @@ WF.disruptionView = (function () {
           const posRelT = c.insertRelT != null ? c.insertRelT : c.doneRelT;
           if (posRelT == null) return;
           const pct = Math.min(100, Math.max(0, (posRelT / maxT) * 100)).toFixed(2);
-          const col = c.success === true ? '#41ff8e' : c.success === false ? '#ff5f6b' : '#aaa';
-          let tip = c.insertRelT != null ? `插入 +${U.fmtDuration(c.insertRelT)}` : '';
-          if (c.doneRelT != null) tip += (tip ? ' → ' : '') + (c.success ? '成功' : '失败') + ` +${U.fmtDuration(c.doneRelT)}`;
+          const col = _conduitColor(c);
+          let tip = _conduitEffectLabel(c);
+          if (c.insertRelT != null) tip += (tip ? '\n' : '') + `插入 +${U.fmtDuration(c.insertRelT)}`;
+          if (c.doneRelT != null) tip += (tip ? '\n' : '') + (c.success ? '成功' : '失败') + ` +${U.fmtDuration(c.doneRelT)}`;
           const dot = U.el('div', 'dis-tl-dot');
           dot.style.left = pct + '%';
           dot.style.background = col;
@@ -88,7 +89,7 @@ WF.disruptionView = (function () {
 
       tlWrap.appendChild(rows);
       const legend = U.el('div', 'dis-tl-legend');
-      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 &nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例</span>';
+      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 / 危险代价 &nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例 · 悬停查看效果名称</span>';
       tlWrap.appendChild(legend);
       container.appendChild(tlWrap);
     }
@@ -115,10 +116,12 @@ WF.disruptionView = (function () {
           const label = c.success === true ? '✓' : c.success === false ? '✗' : '?';
           const cls   = c.success === true ? 'cd ok' : c.success === false ? 'cd fail' : 'cd';
           const sp    = U.el('span', cls, label);
-          let tip = '';
-          if (c.insertRelT != null) tip += `插入 +${U.fmtDuration(c.insertRelT)}`;
+          let tip = _conduitEffectLabel(c);
+          if (c.insertRelT != null) tip += (tip ? '\n' : '') + `插入 +${U.fmtDuration(c.insertRelT)}`;
           if (c.doneRelT   != null) tip += (tip ? '\n' : '') + `${c.success ? '守卫成功' : '守卫失败'} +${U.fmtDuration(c.doneRelT)}`;
           if (tip) sp.title = tip;
+          // Highlight bad debuffs with red border
+          if (_isBadDebuff(c)) sp.style.outline = '1.5px solid #ff5f6b';
           cd.appendChild(sp);
         });
       }
@@ -159,11 +162,11 @@ WF.disruptionView = (function () {
       r.conduits.forEach(c => {
         if (c.insertT != null) {
           const relT = c.insertT - start;
-          if (relT >= 0) insertEvts.push({ relT, round: r.index, artNum: c.artNum });
+          if (relT >= 0) insertEvts.push({ relT, round: r.index, artNum: c.artNum, effectKind: c.effectKind, effectId: c.effectId });
         }
         if (c.doneT != null) {
           const relT = c.doneT - start;
-          if (relT >= 0) doneEvts.push({ relT, round: r.index, success: c.success, artNum: c.artNum });
+          if (relT >= 0) doneEvts.push({ relT, round: r.index, success: c.success, artNum: c.artNum, effectKind: c.effectKind, effectId: c.effectId });
         }
       });
     });
@@ -243,8 +246,9 @@ WF.disruptionView = (function () {
     svgStr += `<text x="${ML - 4}" y="${doneRowY + 4}" fill="var(--c-text2)" font-size="9" text-anchor="end">完成</text>`;
 
     insertEvts.forEach(ev => {
+      const effLabel = ev.effectKind ? _conduitEffectLabel(ev) : '';
+      const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''}${effLabel ? ' ' + effLabel : ''} 插入 +${U.fmtDuration(ev.relT)}`;
       const x  = tx(ev.relT);
-      const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''} 插入 +${U.fmtDuration(ev.relT)}`;
       const x1 = x.toFixed(1), x2 = (x - 4).toFixed(1), x3 = (x + 4).toFixed(1);
       const y1 = (insRowY - 7).toFixed(1), y23 = (insRowY + 5).toFixed(1);
       svgStr += `<polygon points="${x1},${y1} ${x2},${y23} ${x3},${y23}" fill="#5bc8ff" opacity="0.85"><title>${tip}</title></polygon>`;
@@ -252,9 +256,11 @@ WF.disruptionView = (function () {
 
     doneEvts.forEach(ev => {
       const x   = tx(ev.relT).toFixed(1);
-      const col = ev.success === true ? '#41ff8e' : ev.success === false ? '#ff5f6b' : '#888';
+      const isBad = ev.effectKind === 'debuff' && ev.effectId != null && BAD_IDS.has(ev.effectId);
+      const col = isBad ? '#ff5f6b' : ev.success === true ? '#41ff8e' : ev.success === false ? '#ff5f6b' : '#888';
       const lbl = ev.success === true ? '守卫成功' : ev.success === false ? '守卫失败' : '结果未知';
-      const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''} ${lbl} +${U.fmtDuration(ev.relT)}`;
+      const effLabel = ev.effectKind ? _conduitEffectLabel(ev) : '';
+      const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''}${effLabel ? ' ' + effLabel : ''} ${lbl} +${U.fmtDuration(ev.relT)}`;
       svgStr += `<circle cx="${x}" cy="${doneRowY}" r="4.5" fill="${col}" opacity="0.82"><title>${tip}</title></circle>`;
     });
 
@@ -401,6 +407,31 @@ WF.disruptionView = (function () {
     overlay.addEventListener('click', close);
     document.addEventListener('keydown', onKey);
     document.body.appendChild(overlay);
+  }
+
+  // ── Conduit effect helpers ────────────────────────────────
+  // Debuff IDs that are especially dangerous (three bad ones)
+  const BAD_IDS = new Set([1, 2, 3]);
+
+  // Known debuff ID → Chinese display name
+  const DEBUFF_NAMES = {
+    1: '能量消耗', 2: '敌人毒素武器', 3: '群居狩猎野兽',
+  };
+
+  function _isBadDebuff(c) {
+    return c.effectKind === 'debuff' && c.effectId != null && BAD_IDS.has(c.effectId);
+  }
+
+  function _conduitEffectLabel(c) {
+    if (c.effectKind == null) return '';
+    if (c.effectKind === 'buff') return '守卫效果（守卫成功时触发）';
+    const name = c.effectId != null ? (DEBUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
+    return `失守代价: ${name}`;
+  }
+
+  function _conduitColor(c) {
+    if (_isBadDebuff(c)) return '#ff5f6b';   // dangerous debuff → red
+    return c.success === true ? '#41ff8e' : c.success === false ? '#ff5f6b' : '#aaa';
   }
 
   function _st(label, value, cls) {

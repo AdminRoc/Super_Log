@@ -53,27 +53,47 @@ WF.logReader = (function () {
     const m = RE_TIME.exec(line);
     const t = m ? parseFloat(m[1]) : state.lastT;
     if (m) {
+      // 检测会话重置：时间戳骤降 > 60s 说明 EE.log 内包含多个游戏会话。
+      // sessionOffset 累加保证跨会话的绝对排序单调递增（用于正确排序多会话记录）。
+      if (state.lastT > 60 && t < state.lastT - 60) {
+        state.sessionOffset += Math.ceil((state.lastT + 60) / 10000) * 10000;
+      }
       if (state.firstT === null) state.firstT = t;
       state.lastT = t;
     }
 
-    // wall-clock 基准行（比较罕见，直接检测无需预过滤）
-    if (!state.wallClockAnchor && line.indexOf('Current time:') !== -1 && line.indexOf('Diag') !== -1) {
+    // wall-clock 基准行 — 每次出现都更新，支持多会话日志文件
+    if (line.indexOf('Current time:') !== -1 && line.indexOf('Diag') !== -1) {
       const wm = RE_WALLCLOCK.exec(line);
       if (wm) {
         const d = new Date(wm[1]);
-        if (!isNaN(d.getTime())) state.wallClockAnchor = { t, date: d };
+        if (!isNaN(d.getTime())) {
+          state.wallClockAnchor = { t, date: d, offset: state.sessionOffset };
+          state.sessions.push(state.wallClockAnchor);
+        }
       }
     }
 
     if (matchesAny(line)) {
-      for (let i = 0; i < parsers.length; i++) parsers[i].feed(t, line);
+      // 将 sessionOffset 和当前会话锚点传给解析器，支持多会话绝对时间计算
+      for (let i = 0; i < parsers.length; i++) {
+        parsers[i].feed(t, line, state.sessionOffset, state.wallClockAnchor);
+      }
     }
+  }
+
+  function _mkState() {
+    return { lineCount: 0, firstT: null, lastT: 0, wallClockAnchor: null, sessions: [], sessionOffset: 0 };
+  }
+
+  function _mkResult(state) {
+    return { lineCount: state.lineCount, firstT: state.firstT || 0, lastT: state.lastT,
+             wallClockAnchor: state.wallClockAnchor, sessions: state.sessions };
   }
 
   /* 同步扫描（小文件 / selftest.js 用） */
   function scan(text, parsers) {
-    const state = { lineCount: 0, firstT: null, lastT: 0, wallClockAnchor: null };
+    const state = _mkState();
     let pos = 0;
     const len = text.length;
     while (pos < len) {
@@ -86,7 +106,7 @@ WF.logReader = (function () {
     for (let i = 0; i < parsers.length; i++) {
       if (parsers[i].finish) parsers[i].finish(state.lastT);
     }
-    return { lineCount: state.lineCount, firstT: state.firstT || 0, lastT: state.lastT, wallClockAnchor: state.wallClockAnchor };
+    return _mkResult(state);
   }
 
   /* 大文件阈值（字节）：超过此大小使用异步分块扫描 */
@@ -97,7 +117,7 @@ WF.logReader = (function () {
    * onProgress(pct: 0-100)  — 可选进度回调
    * onDone(scanResult)       — 完成回调 */
   function scanAsync(text, parsers, onProgress, onDone) {
-    const state = { lineCount: 0, firstT: null, lastT: 0, wallClockAnchor: null };
+    const state = _mkState();
     const lines = text.split('\n');
     const total = lines.length;
     let pos = 0;
@@ -115,13 +135,15 @@ WF.logReader = (function () {
           if (parsers[i].finish) parsers[i].finish(state.lastT);
         }
         if (onProgress) onProgress(100);
-        onDone({ lineCount: state.lineCount, firstT: state.firstT || 0, lastT: state.lastT, wallClockAnchor: state.wallClockAnchor });
+        onDone(_mkResult(state));
       }
     }
     setTimeout(step, 0); // 让 UI 先渲染 "解析中" 状态再开始
   }
 
-  /* 构造 相对秒→绝对时间 的换算函数 */
+  /* 构造 相对秒→绝对时间 的换算函数
+   * 多会话日志中每条记录存有自己的 sessionAnchor，优先用它；
+   * 此处的 toDate 作为全局回退（单会话场景与旧代码行为相同）。 */
   function makeClock(scanResult, fileLastModified) {
     const { wallClockAnchor, lastT } = scanResult;
     if (wallClockAnchor) {

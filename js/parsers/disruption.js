@@ -8,6 +8,7 @@ WF.DisruptionParser = (function () {
     missionName:   'ThemedSquadOverlay.lua: Mission name:',
     ssStarted:     'SS_WAITING_FOR_PLAYERS to SS_STARTED',
     modeState:     'SentientArtifactMission.lua: ModeState =',
+    randomized:    'SentientArtifactMission.lua: Disruption: Randomized ',
     conduitStart:  'SentientArtifactMission.lua: Disruption: Starting defense for artifact',
     conduitDone:   'SentientArtifactMission.lua: Disruption: Completed defense for artifact',
     conduitFail:   'SentientArtifactMission.lua: Disruption: Failed defense for artifact',
@@ -18,6 +19,28 @@ WF.DisruptionParser = (function () {
     killed:        'was killed by',
     agentCreated:  'OnAgentCreated',
   };
+
+  // Conduit effect ID → Chinese display name.
+  // Buff IDs (31-38) = positive effects when conduit defended.
+  // Debuff IDs (1-25) = negative effects when conduit fails.
+  // IDs that appear in 敌人毒素武器 / 能量消耗 / 群居狩猎野兽 are flagged BAD.
+  // Unverified names are marked 待翻译.
+  const EFFECT_NAMES = {
+    // ── debuffs ──────────────────────────────────────────────
+    1:  '能量消耗',
+    2:  '敌人毒素武器',
+    3:  '群居狩猎野兽',
+    4:  '待翻译',   5: '待翻译',   6: '待翻译',   7: '待翻译',
+    8:  '待翻译',   9: '待翻译',  12: '待翻译',  13: '待翻译',
+    14: '待翻译',  15: '待翻译',  16: '待翻译',  21: '待翻译',
+    23: '待翻译',  25: '待翻译',
+    // ── buffs ────────────────────────────────────────────────
+    31: '守卫效果', 32: '守卫效果', 33: '守卫效果', 34: '守卫效果',
+    35: '守卫效果', 36: '守卫效果', 37: '守卫效果', 38: '守卫效果',
+  };
+
+  // Debuff IDs that should be highlighted red (the three dangerous ones)
+  const BAD_DEBUFF_IDS = new Set([1, 2, 3]);
 
   // NPC path substrings indicating non-combat agents (pets, players, objectives, drones)
   const AGENT_SKIP = ['PetAgent', 'PlayerPawnAgent', 'DefenseAgent', 'CleaningDroneAgent', 'CrewAgent', 'CrewmemberAgent'];
@@ -41,7 +64,8 @@ WF.DisruptionParser = (function () {
         isDisruption: false,
         currentRoundKills: 0,
         currentRoundSpawned: 0,
-        killEvents: [],       // absolute timestamps of all in-round kills (for chart)
+        killEvents: [],
+        areaEffects: {},      // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
       };
       roundStartT = null;
     }
@@ -62,6 +86,8 @@ WF.DisruptionParser = (function () {
         insertRelT: c.insertRelT,
         doneT:      c.doneT,
         doneRelT:   c.doneRelT,
+        effectKind: c.effectKind,
+        effectId:   c.effectId,
       }));
       mission.rounds.push({
         index:           idx,
@@ -107,9 +133,21 @@ WF.DisruptionParser = (function () {
           const state = parseInt(m[1], 10);
           if (state === 3) {
             mission.roundOpen = true;
+            mission.areaEffects = {};   // reset for new round
             roundStartT = t;
           } else if (state === 4) {
             closeRoundAt(t);
+          }
+          return;
+        }
+        if (line.indexOf(PAT.randomized) !== -1) {
+          mission.isDisruption = true;
+          const rx = /Randomized (buff|debuff) for area (\d+): (\d+)/.exec(line);
+          if (rx) {
+            mission.areaEffects[parseInt(rx[2], 10)] = {
+              kind: rx[1],   // 'buff' | 'debuff'
+              id:   parseInt(rx[3], 10),
+            };
           }
           return;
         }
@@ -118,7 +156,13 @@ WF.DisruptionParser = (function () {
           const rBase  = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
           const artRx  = /Starting defense for artifact\s+(\d+)/.exec(line);
           const artNum = artRx ? parseInt(artRx[1], 10) : null;
-          mission.openConduits.push({ success: null, artNum, insertT: t, insertRelT: t - rBase });
+          const effect = (artNum != null && mission.areaEffects[artNum]) || null;
+          mission.openConduits.push({
+            success: null, artNum,
+            insertT: t, insertRelT: t - rBase,
+            effectKind: effect ? effect.kind : null,
+            effectId:   effect ? effect.id   : null,
+          });
           return;
         }
         if (line.indexOf(PAT.conduitDone) !== -1 || line.indexOf(PAT.conduitFail) !== -1) {

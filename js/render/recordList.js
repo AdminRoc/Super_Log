@@ -14,13 +14,18 @@ WF.recordList = (function () {
     container.innerHTML = '';
     if (!records.length) return;
 
-    // 由近及远：endT 大的在前
-    const sorted = records.slice().sort((a, b) => b.endT - a.endT);
+    // 由近及远：优先用 endAbsT（多会话绝对序），回退到 endT（单会话）
+    const sorted = records.slice().sort((a, b) => {
+      const aE = a.endAbsT !== undefined ? a.endAbsT : a.endT;
+      const bE = b.endAbsT !== undefined ? b.endAbsT : b.endT;
+      return bE - aE;
+    });
 
     sorted.forEach((rec, i) => {
       const card = U.el('div', 'record-card');
       const s = summaryFn(rec);
-      const date = clock.available ? clock.toDate(rec.startT) : null;
+      // 优先用记录自带的 startDate（多会话精确），回退到全局 clock
+      const date = rec.startDate || (clock.available ? clock.toDate(rec.startT) : null);
 
       const head = U.el('div', 'record-card-head');
       head.appendChild(U.el('span', 'record-title', s.title));

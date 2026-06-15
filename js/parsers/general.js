@@ -88,33 +88,57 @@ WF.GeneralParser = (function () {
   // because the game engine resolves them at runtime but never writes the resolved string back.
   // Map well-known substrings to their Chinese display names; unknown paths are dropped (null).
   const LANG_PATH_MAP = [
-    ['EntratiLabSixMinuteChallenge', '解剖圣所（火卫二）'],
-    ['EntratiLab',                   '圣所'],
+    // ── 火卫二 / 解剖圣所 ─────────────────────────────────────
+    ['EntratiLabSixMinuteChallenge', '解剖圣所（火卫二）'],  // 6分钟孽杀附加挑战
+    ['EntratiLab',                   '解剖圣所（火卫二）'],  // 火卫二圣所通用
+    // ── 特殊任务类型 ───────────────────────────────────────────
     ['NarmerSortie',                 '奥拉姆突袭'],
     ['SteelPath',                    '钢铁之路'],
     ['KuvaSiphon',                   '赤毒虹吸'],
     ['KuvaFlood',                    '赤毒洪潮'],
     ['VoidFissure',                  '虚空裂缝'],
     ['SentinelChallenge',            '哨兵任务'],
+    // ── 深层/时序科研 ──────────────────────────────────────────
+    ['DeepArchimedea',               '深层科研'],
+    ['TemporalArchimedea',           '时光科研'],
+    // ── 双衍王境 ──────────────────────────────────────────────
+    ['DuvirrParadox',                '双衍悖论'],
+    ['Duviri',                       '双衍王境'],
+    // ── 开放世界（通常由 NodeRollOver 提供正确名称，此为备用）──
+    ['EidolonLandscape',             '夜灵平野'],
+    ['OrbVallis',                    '奥布山谷'],
+    ['CambionDrift',                 '魔胎之境'],
   ];
+
+  // Chinese hub/social-area names that may appear in MissionIntro.lua:MissionName but are NOT
+  // mission names — they indicate the player was in a hub when the log line fired.
+  // Returning null causes the card to fall back to locationDisplay (the real node name).
+  const HUB_SUPPRESS = new Set([
+    '羽化之穹',  // Chrysalith — Zariman Ten Zero 社交中枢
+    '殁世幽都',  // Necralisk  — 火卫二 社交中枢
+    '希图斯',    // Cetus       — 地球平原 社交中枢
+    '福尔图纳',  // Fortuna     — 金星平原 社交中枢
+    '双衍王境',  // Duviri      — 双衍王境 (作为中枢出现时抑制，节点名另有来源)
+  ]);
 
   function _cleanMissionName(raw) {
     if (!raw) return null;
+    if (HUB_SUPPRESS.has(raw)) return null;         // 社交中枢名 → 抑制，使用 locationDisplay
+    if (/^[A-Z0-9_]+$/.test(raw)) return null;      // 全大写内部代码（COPERNICUS 等）→ 抑制
     if (!raw.startsWith('/Lotus/Language/')) return raw;
     for (let i = 0; i < LANG_PATH_MAP.length; i++) {
       if (raw.indexOf(LANG_PATH_MAP[i][0]) !== -1) return LANG_PATH_MAP[i][1];
     }
-    return null;  // unknown lang path — caller will fall back to locationDisplay
+    return null;  // 未知 Lotus 路径 → 调用方回退到 locationDisplay
   }
 
   function create() {
     const records = [];
     const nodeNameMap = {};  // SolNodeN → display name (session-wide)
     let m = null;
-
-    // SyncAutoPopulatedConsumables fires ~1s BEFORE 'Game successfully connected to:'
-    // Buffer the type/node here so it isn't lost when m is null between missions
-    let pendingSync = null;
+    let pendingSync = null;  // buffered before 'connected'
+    let _sessionOffset = 0;    // 多会话绝对排序偏移（由 logReader 传入）
+    let _sessionAnchor = null; // 当前会话 wall-clock 锚点（由 logReader 传入）
 
     function reset() { m = null; }
 
@@ -129,6 +153,8 @@ WF.GeneralParser = (function () {
         missionName:     carry.missionName     || null,
         locationNode:    carry.locationNode    || null,
         locationDisplay: carry.locationDisplay || null,
+        sessionOffset:   _sessionOffset,   // 用于多会话绝对排序
+        sessionAnchor:   _sessionAnchor,   // 用于计算绝对时刻
         // ── Endless mission segments ──
         endlessType:      null,       // 'defense'|'loopDefense'|'survival'|'interception'
         waves:            [],         // defense / loopDefense wave records (pushed by closeCurrentWave)
@@ -175,6 +201,8 @@ WF.GeneralParser = (function () {
       const end   = m.endT || t;
       if (end - start < MIN_DURATION) { reset(); return; }
       closeCurrentWave(end);
+      const anchor = m.sessionAnchor;
+      const offset = m.sessionOffset || 0;
       records.push({
         type:            'general',
         missionType:     m.missionType,
@@ -185,6 +213,13 @@ WF.GeneralParser = (function () {
         startT:          start,
         firstFrameT:     m.firstFrameT,
         endT:            end,
+        // 多会话支持：endAbsT 用于跨会话正确排序
+        endAbsT:         end + offset,
+        // 每条记录存自己的 wall-clock 锚点，保证多会话日志中时刻计算准确
+        startDate:      anchor ? new Date(anchor.date.getTime() + (start - anchor.t) * 1000) : null,
+        endDate:        anchor ? new Date(anchor.date.getTime() + (end   - anchor.t) * 1000) : null,
+        firstFrameDate: (anchor && m.firstFrameT != null)
+          ? new Date(anchor.date.getTime() + (m.firstFrameT - anchor.t) * 1000) : null,
         totalDuration:   end - start,
         frameDuration:   (m.firstFrameT != null) ? (end - m.firstFrameT) : null,
         // Endless data
@@ -201,7 +236,10 @@ WF.GeneralParser = (function () {
     }
 
     return {
-      feed(t, line) {
+      feed(t, line, sessionOffset, sessionAnchor) {
+        // 跟踪会话信息（用于跨会话绝对排序和日期计算）
+        if (sessionOffset !== undefined) _sessionOffset = sessionOffset;
+        if (sessionAnchor !== undefined) _sessionAnchor = sessionAnchor;
 
         // ── NodeRollOver: build name map (no m required) ──────
         if (line.indexOf(PAT.nodeRollOver) !== -1) {
@@ -277,14 +315,18 @@ WF.GeneralParser = (function () {
         }
 
         // ── mission name ──────────────────────────────────────
+        // MissionIntro fires early with internal codes or hub names; only adopt if useful.
         if (line.indexOf(PAT.missionName) !== -1) {
           const i = line.indexOf(PAT.missionName);
-          m.missionName = _cleanMissionName(line.substring(i + PAT.missionName.length).trim());
+          const cleaned = _cleanMissionName(line.substring(i + PAT.missionName.length).trim());
+          if (cleaned !== null) m.missionName = cleaned;
           return;
         }
+        // ThemedSquadOverlay provides the human-readable display name; use it to fill gaps.
         if (!m.missionName && line.indexOf(PAT.missionNameOvl) !== -1) {
           const i = line.indexOf(PAT.missionNameOvl);
-          m.missionName = _cleanMissionName(line.substring(i + PAT.missionNameOvl.length).trim());
+          const cleaned = _cleanMissionName(line.substring(i + PAT.missionNameOvl.length).trim());
+          if (cleaned !== null) m.missionName = cleaned;
           return;
         }
 
@@ -304,16 +346,21 @@ WF.GeneralParser = (function () {
         if (line.indexOf(PAT.waveStart) !== -1) {
           const rx = /Starting wave (\d+),?\s*spawning a total of (\d+)/.exec(line);
           if (rx) {
-            closeCurrentWave(t);
-            if (!m.endlessType) m.endlessType = 'defense';
-            m.currentWave = {
-              segType: 'defense',
-              index: parseInt(rx[1], 10),
-              totalEnemies: parseInt(rx[2], 10),
-              startT: t, endT: null, duration: null,
-              totalSpawned: 0, enemiesLeft: 0,
-              kills: 0, spawned: 0,
-            };
+            const wn    = parseInt(rx[1], 10);
+            const total = parseInt(rx[2], 10);
+            if (m.currentWave && m.currentWave.index === wn) {
+              // defenseWaveAlt already opened this wave — just update the enemy count
+              m.currentWave.totalEnemies = total;
+            } else {
+              closeCurrentWave(t);
+              if (!m.endlessType) m.endlessType = 'defense';
+              m.currentWave = {
+                segType: 'defense',
+                index: wn, totalEnemies: total,
+                startT: t, endT: null, duration: null,
+                totalSpawned: 0, enemiesLeft: 0, kills: 0, spawned: 0,
+              };
+            }
           }
           return;
         }
@@ -441,12 +488,9 @@ WF.GeneralParser = (function () {
           return;
         }
 
-        // Kill counting
-        if (line.indexOf(PAT.killed) !== -1) {
-          m.kills++;
-          if (m.currentWave) m.currentWave.kills++;
-          return;
-        }
+        // NOTE: 'was killed by' in EE.log captures friendly NPCs killed by enemies,
+        // NOT player kills of enemies. Warframe does not log individual enemy kill events
+        // for most mission types. Kill totals for defense waves come from spawned-remaining.
 
         // ══ EOM TRIGGERS ══════════════════════════════════════
         // Any one of these finalises the record.
