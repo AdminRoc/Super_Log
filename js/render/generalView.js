@@ -29,20 +29,32 @@ WF.generalView = (function () {
     timingBox.appendChild(U.el('div', 'gen-timing-title', '时间节点'));
 
     const timingGrid = U.el('div', 'gen-timing-grid');
-    const absStart = clock ? new Date((rec.startT - (clock.anchorT || 0)) * 1000 + (clock.anchorDate ? clock.anchorDate.getTime() : 0)) : null;
 
-    _timingRow(timingGrid, '任务开始（首帧）',
-      rec.firstFrameT ? U.fmtLogTime(rec.firstFrameT) : '—',
-      '游戏内计时开始 / HUD 首次渲染瞬间');
-    _timingRow(timingGrid, '任务结算（尾帧）',
-      U.fmtLogTime(rec.endT),
-      'EOM missionLocationUnlocked 触发，对应游戏内结算显示时间');
-    _timingRow(timingGrid, '首帧→尾帧时差',
-      rec.frameDuration != null ? U.fmtDurationLong(rec.frameDuration) : '—',
-      '尾帧时刻 − 首帧时刻');
-    _timingRow(timingGrid, 'SS_STARTED→尾帧',
+    // absolute start time from clock if available
+    if (clock && clock.available) {
+      const absDate = clock.toDate(rec.startT);
+      if (absDate) {
+        _timingRow(timingGrid, '任务开始时刻',
+          U.fmtAbsTime(absDate, clock.approx),
+          '实际时钟时间，由日志内 Current time 行换算');
+      }
+    }
+
+    _timingRow(timingGrid, '任务总时长（与游戏结算一致）',
       U.fmtDurationLong(rec.totalDuration),
-      '与游戏结算界面显示的时间一致');
+      'SS_STARTED → EOM 触发，与游戏结算界面显示数字一致');
+
+    if (rec.firstFrameT != null) {
+      _timingRow(timingGrid, '首帧偏移（相对计时起点）',
+        U.fmtDuration(rec.firstFrameT - rec.startT),
+        'HUD REDUX 首次渲染相对 SS_STARTED 的偏移（通常 < 0.1s，可能略负）');
+    }
+
+    if (rec.frameDuration != null) {
+      _timingRow(timingGrid, '首帧 → 尾帧时差',
+        U.fmtDurationLong(rec.frameDuration),
+        '尾帧时刻 − 首帧时刻，≈ 任务总时长');
+    }
 
     timingBox.appendChild(timingGrid);
     container.appendChild(timingBox);
@@ -105,7 +117,7 @@ WF.generalView = (function () {
 
     // ── 备注 ─────────────────────────────────────────────────
     container.appendChild(U.el('div', 'note',
-      '首帧 = HUD 首次渲染瞬间（HudRedux）；尾帧 = EOM missionLocationUnlocked 触发时刻，与游戏结算界面显示数字一致。击杀数含所有实体死亡事件。'));
+      '任务总时长 = SS_STARTED → EOM missionLocationUnlocked，与游戏结算显示一致。首帧偏移 = HUD REDUX 首次渲染相对计时起点的偏差（通常 < 0.1s）。击杀数含所有实体死亡事件。'));
   }
 
   function _st(label, value, cls) {

@@ -33,6 +33,7 @@ WF.logReader = (function () {
     // 通用任务 General
     'MissionIntro.lua', 'EOM missionLocationUnlocked', 'CommitInventoryChangesToDB',
     'HUD REDUX', 'SyncAutoPopulatedConsumables', 'was killed by', 'missionType=',
+    'SetSquadMissionResult',
   ];
 
   /* 快速判断是否应送入解析器 */
