@@ -16,7 +16,11 @@ WF.DisruptionParser = (function () {
     abort:         'TopMenu.lua: Abort',
     failed:        'EndOfMatch.lua: Mission Failed',
     killed:        'was killed by',
+    agentCreated:  'OnAgentCreated',
   };
+
+  // NPC path substrings indicating non-combat agents (pets, players, objectives, drones)
+  const AGENT_SKIP = ['PetAgent', 'PlayerPawnAgent', 'DefenseAgent', 'CleaningDroneAgent', 'CrewAgent', 'CrewmemberAgent'];
 
   function create() {
     const records = [];
@@ -36,6 +40,8 @@ WF.DisruptionParser = (function () {
         score: null,
         isDisruption: false,
         currentRoundKills: 0,
+        currentRoundSpawned: 0,
+        killEvents: [],       // absolute timestamps of all in-round kills (for chart)
       };
       roundStartT = null;
     }
@@ -51,6 +57,7 @@ WF.DisruptionParser = (function () {
       const rStart = roundStartT !== null ? roundStartT : mission.prevEndT;
       const conduits = mission.openConduits.map(c => ({
         success:    c.success,
+        artNum:     c.artNum,
         insertT:    c.insertT,
         insertRelT: c.insertRelT,
         doneT:      c.doneT,
@@ -65,11 +72,13 @@ WF.DisruptionParser = (function () {
         cumulative:      t - effectiveStart(),
         conduits,
         kills:           mission.currentRoundKills,
+        spawned:         mission.currentRoundSpawned,
       });
       mission.prevEndT = t;
       mission.openConduits = [];
       mission.roundOpen = false;
       mission.currentRoundKills = 0;
+      mission.currentRoundSpawned = 0;
       roundStartT = null;
     }
 
@@ -118,7 +127,6 @@ WF.DisruptionParser = (function () {
           const rBase = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
           const artRx  = /(Completed|Failed) defense for artifact\s+(\d+)/.exec(line);
           const artNum = artRx ? parseInt(artRx[2], 10) : null;
-          // match by artifact number; fall back to first unresolved
           const pending = mission.openConduits.find(c =>
             c.success === null && (artNum == null || c.artNum === artNum)
           );
@@ -127,13 +135,26 @@ WF.DisruptionParser = (function () {
             pending.doneT    = t;
             pending.doneRelT = t - rBase;
           } else {
-            // non-host log: no matching insertion event
             mission.openConduits.push({ success: ok, artNum, insertT: null, insertRelT: null, doneT: t, doneRelT: t - rBase });
           }
           return;
         }
+
+        // Enemy spawn counting — only during active round
+        if (mission.roundOpen &&
+            line.indexOf(PAT.agentCreated) !== -1 &&
+            line.indexOf('/Npc/') !== -1) {
+          let skip = false;
+          for (let k = 0; k < AGENT_SKIP.length; k++) {
+            if (line.indexOf(AGENT_SKIP[k]) !== -1) { skip = true; break; }
+          }
+          if (!skip) mission.currentRoundSpawned++;
+          return;
+        }
+
         if (line.indexOf(PAT.killed) !== -1 && mission.roundOpen) {
           mission.currentRoundKills++;
+          mission.killEvents.push(t);   // store timestamp for chart
           return;
         }
         if (line.indexOf(PAT.totalScore) !== -1) {
@@ -162,6 +183,7 @@ WF.DisruptionParser = (function () {
               roundsPerMin: rndPerMin, conduitRate: condRate,
               successConduits: successConds, totalConduits: totalConds,
               perfScore: ps, perfGrade: pg,
+              killEvents: mission.killEvents,
             });
           }
           reset();

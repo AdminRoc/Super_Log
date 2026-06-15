@@ -160,6 +160,7 @@ body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
 #detail-wrap {
   background: var(--c-card); border: 1px solid var(--c-border);
   border-radius: var(--r-lg); padding: 18px; align-self: start;
+  min-width: 0; overflow-x: hidden;
 }
 .panel-label {
   display: inline-block;
@@ -260,7 +261,9 @@ body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
   margin: 6px 0 16px; background: rgba(13, 16, 27, 0.75);
   border: 1px solid var(--c-border); border-radius: var(--r-md); padding: 14px;
 }
-.round-chart, .arb-chart { width: 100%; height: auto; display: block; }
+/* height is NOT set here — each SVG sets its own height attribute so it renders
+   at the viewBox's natural pixel height and doesn't scale up with container width */
+.round-chart, .arb-chart { width: 100%; display: block; }
 .bar-ok { fill: var(--c-teal-dim); }
 .bar-ok:hover { fill: var(--c-teal); }
 .bar-fail { fill: #a8424c; }
@@ -696,13 +699,38 @@ body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
   color: var(--c-teal); border-color: rgba(95,208,232,0.4);
   background: rgba(95,208,232,0.06); box-shadow: 0 0 12px rgba(95,208,232,0.1);
 }
-/* ================= 中断·传导体时间轴 ================= */
+/* ================= 中断·传导体时间轴（HTML div 版，无 SVG 拉伸问题） ================= */
 .dis-tl-wrap { margin-top: 18px; }
 .dis-tl-title { font-size: 13px; letter-spacing: 2px; color: var(--c-text2); margin-bottom: 10px; }
-.dis-tl-svg-box { overflow-x: auto; width: 100%; }
-.dis-tl-svg { width: 100%; display: block; }
-.dis-tl-track { fill: rgba(255,255,255,0.055); }
+.dis-tl-rows { padding: 2px 0; }
+.dis-tl-row { display: flex; align-items: center; height: 14px; margin-bottom: 5px; }
+.dis-tl-rownum { width: 44px; flex-shrink: 0; font-size: 9px; color: var(--c-text2);
+  text-align: right; padding-right: 6px; font-family: var(--f-px); }
+.dis-tl-track { flex: 1; position: relative; height: 8px;
+  background: rgba(255,255,255,0.055); border-radius: 2px; }
+.dis-tl-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%;
+  top: 0; transform: translateX(-50%); cursor: default; }
 .dis-tl-legend { font-size: 12px; color: var(--c-text); margin-top: 8px; letter-spacing: 1px; }
+
+/* ================= 击杀折线图 全屏弹窗 ================= */
+.dis-chart-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(4,5,12,0.94);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.dis-chart-modal {
+  max-width: calc(100vw - 40px); max-height: calc(100vh - 60px);
+  overflow: auto; border: 1px solid var(--c-border-hi);
+  border-radius: var(--r-lg); padding: 14px;
+  background: var(--c-bg2); cursor: default;
+}
+.dis-chart-hint {
+  margin-top: 10px; font-size: 12px; color: var(--c-text2); letter-spacing: 1px;
+}
+.dis-chart-zoom { cursor: zoom-in; }
+.dis-chart-zoom:hover { outline: 1px solid var(--c-border-hi); border-radius: var(--r-sm); }
 
 /* ================= 通用任务视图 ================= */
 .gen-timing-box {

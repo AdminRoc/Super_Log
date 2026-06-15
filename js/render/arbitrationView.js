@@ -35,6 +35,7 @@ WF.arbitrationView = (function () {
     const metaSubs = [
       `任务时长 ${U.fmtDurationLong(rec.duration)}`,
       rec.rounds > 0 ? `${rec.rounds} ${rec.missionType === 'survival' ? '轮' : '波'}` : null,
+      rec.nodeId ? `节点 ID：${rec.nodeId}` : null,
       !rec.complete ? '（未检测到结算，时长为估算值）' : null,
     ].filter(Boolean);
     metaSubs.forEach((s) => meta.appendChild(U.el('div', 'arb-meta-sub', s)));

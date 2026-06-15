@@ -24,11 +24,11 @@ WF.utils = (function () {
     return h > 0 ? `${h}:${core}` : core;
   }
 
-  /** Date → "yyyy-MM-dd HH:mm" */
+  /** Date → "yyyy-MM-dd HH:mm:ss" */
   function fmtAbsTime(date, approx) {
     if (!date || isNaN(date.getTime())) return '时间未知';
     const p = (n) => String(n).padStart(2, '0');
-    const s = `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}`;
+    const s = `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`;
     return approx ? `≈${s}` : s;
   }
 

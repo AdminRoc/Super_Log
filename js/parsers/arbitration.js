@@ -13,6 +13,8 @@ WF.ArbitrationParser = (function () {
     cachedName:       /ThemedSquadOverlay\.lua: Cached mission name=(.+?)\s*$/,
     voteName:         /ThemedSquadOverlay\.lua: ShowMissionVote\s+(.+?)\s*$/,
     hostLoadingNode:  /ThemedSquadOverlay\.lua: Host loading .*"name":"([^"]+)_EliteAlert"/,
+    // Vote/name lines often have parenthetical form (NodePath_EliteAlert) — ref: wxhn1225 reVoteNodeId
+    voteNodeId:       /\(([A-Za-z0-9_/]+)_EliteAlert\)/,
     stateStarted:     /GameRulesImpl - changing state from SS_WAITING_FOR_PLAYERS to SS_STARTED/,
     stateEnding:      /GameRulesImpl - changing state from SS_STARTED to SS_ENDING/,
     eomInit:          /EndOfMatch\.lua: Initialize\b/,
@@ -132,6 +134,14 @@ WF.ArbitrationParser = (function () {
           if (h) {
             if (!m) newMission(t, null);
             m.nodeId = h[1];
+          }
+          // Also try the parenthetical form: (NodePath_EliteAlert)
+          if (!h) {
+            const v = RE.voteNodeId.exec(line);
+            if (v) {
+              if (!m) newMission(t, null);
+              if (!m.nodeId) m.nodeId = v[1];
+            }
           }
         }
         if (nm) {
