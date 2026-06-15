@@ -4,17 +4,18 @@ WF.DisruptionParser = (function () {
   const MIN_ROUNDS = 45;
 
   const PAT = {
-    connected:    'Game successfully connected to:',
-    missionName:  'ThemedSquadOverlay.lua: Mission name:',
-    ssStarted:    'SS_WAITING_FOR_PLAYERS to SS_STARTED',
-    modeState:    'SentientArtifactMission.lua: ModeState =',
-    conduitDone:  'SentientArtifactMission.lua: Disruption: Completed defense for artifact',
-    conduitFail:  'SentientArtifactMission.lua: Disruption: Failed defense for artifact',
-    totalScore:   'SentientArtifactMission.lua: Disruption: Total score is',
-    eom:          'ExtractionTimer.lua: EOM: All players extracting',
-    abort:        'TopMenu.lua: Abort',
-    failed:       'EndOfMatch.lua: Mission Failed',
-    killed:       'was killed by',
+    connected:     'Game successfully connected to:',
+    missionName:   'ThemedSquadOverlay.lua: Mission name:',
+    ssStarted:     'SS_WAITING_FOR_PLAYERS to SS_STARTED',
+    modeState:     'SentientArtifactMission.lua: ModeState =',
+    conduitStart:  'SentientArtifactMission.lua: Disruption: Starting defense for artifact',
+    conduitDone:   'SentientArtifactMission.lua: Disruption: Completed defense for artifact',
+    conduitFail:   'SentientArtifactMission.lua: Disruption: Failed defense for artifact',
+    totalScore:    'SentientArtifactMission.lua: Disruption: Total score is',
+    eom:           'ExtractionTimer.lua: EOM: All players extracting',
+    abort:         'TopMenu.lua: Abort',
+    failed:        'EndOfMatch.lua: Mission Failed',
+    killed:        'was killed by',
   };
 
   function create() {
@@ -49,9 +50,11 @@ WF.DisruptionParser = (function () {
       const idx   = mission.rounds.length + 1;
       const rStart = roundStartT !== null ? roundStartT : mission.prevEndT;
       const conduits = mission.openConduits.map(c => ({
-        success: c.success,
-        t:       c.t,
-        relT:    c.t - rStart,
+        success:    c.success,
+        insertT:    c.insertT,
+        insertRelT: c.insertRelT,
+        doneT:      c.doneT,
+        doneRelT:   c.doneRelT,
       }));
       mission.rounds.push({
         index:           idx,
@@ -101,14 +104,32 @@ WF.DisruptionParser = (function () {
           }
           return;
         }
-        if (line.indexOf(PAT.conduitDone) !== -1) {
+        if (line.indexOf(PAT.conduitStart) !== -1) {
           mission.isDisruption = true;
-          mission.openConduits.push({ success: true, t });
+          const rBase  = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
+          const artRx  = /Starting defense for artifact\s+(\d+)/.exec(line);
+          const artNum = artRx ? parseInt(artRx[1], 10) : null;
+          mission.openConduits.push({ success: null, artNum, insertT: t, insertRelT: t - rBase });
           return;
         }
-        if (line.indexOf(PAT.conduitFail) !== -1) {
+        if (line.indexOf(PAT.conduitDone) !== -1 || line.indexOf(PAT.conduitFail) !== -1) {
           mission.isDisruption = true;
-          mission.openConduits.push({ success: false, t });
+          const ok    = line.indexOf(PAT.conduitDone) !== -1;
+          const rBase = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
+          const artRx  = /(Completed|Failed) defense for artifact\s+(\d+)/.exec(line);
+          const artNum = artRx ? parseInt(artRx[2], 10) : null;
+          // match by artifact number; fall back to first unresolved
+          const pending = mission.openConduits.find(c =>
+            c.success === null && (artNum == null || c.artNum === artNum)
+          );
+          if (pending) {
+            pending.success  = ok;
+            pending.doneT    = t;
+            pending.doneRelT = t - rBase;
+          } else {
+            // non-host log: no matching insertion event
+            mission.openConduits.push({ success: ok, artNum, insertT: null, insertRelT: null, doneT: t, doneRelT: t - rBase });
+          }
           return;
         }
         if (line.indexOf(PAT.killed) !== -1 && mission.roundOpen) {
@@ -125,8 +146,8 @@ WF.DisruptionParser = (function () {
             const start  = mission.startT || mission.loadT;
             const dur    = t - start;
             const n      = mission.rounds.length;
-            const successConds = mission.rounds.reduce((s, r) => s + r.conduits.filter(c => c.success).length, 0);
-            const totalConds   = mission.rounds.reduce((s, r) => s + r.conduits.length, 0);
+            const successConds = mission.rounds.reduce((s, r) => s + r.conduits.filter(c => c.success === true).length, 0);
+            const totalConds   = mission.rounds.reduce((s, r) => s + r.conduits.filter(c => c.success !== null).length, 0);
             const condRate  = totalConds > 0 ? successConds / totalConds : 1;
             const rndPerMin = n / (dur / 60);
             const effScore  = Math.min(70, (rndPerMin / 1.8) * 70);

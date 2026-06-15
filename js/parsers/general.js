@@ -27,14 +27,13 @@ WF.GeneralParser = (function () {
     MT_ARENA:               '竞技场',
     MT_CACHES:              '缓存',
     MT_CORPUS_LOOT_DEFENSE: '奸商托管',
-    MT_ARTIFACT:            '断裂遗迹',
+    MT_ARTIFACT:            '中断',
     MT_LANDSCAPE:           '开放世界',
     MT_RAILJACK:            '铁骨战舰',
     MT_VOID_CASCADE:        '虚空瀑布',
     MT_VOID_FLOOD:          '虚空洪流',
     MT_VOID_ARMAGEDDON:     '虚空末日',
     MT_VOID_FISSURE:        '虚空裂缝',
-    MT_DISRUPTION:          '中断',
     MT_NETHERCELLS:         '深渊',
     MT_FEED_THE_TENNO:      '纳罗供养',
     MT_GENERIC_COOPTIVE:    '合作任务',
@@ -67,10 +66,12 @@ WF.GeneralParser = (function () {
 
     function reset() { m = null; }
 
-    function newMission(t) {
+    function newMission(t, carryType, carryNode) {
       m = {
         loadT: t, startT: null, firstFrameT: null, endT: null,
-        missionType: null, missionName: null, locationNode: null,
+        missionType: carryType || null,
+        missionName: null,
+        locationNode: carryNode || null,
         waves: [], currentWave: null,
         kills: 0, aborted: false,
       };
@@ -116,9 +117,12 @@ WF.GeneralParser = (function () {
 
     return {
       feed(t, line) {
-        // new level load always resets current candidate
+        // SyncAutoPopulatedConsumables fires ~1s BEFORE connected to:
+        // Carry the type forward so it isn't lost when newMission() resets m
         if (line.indexOf(PAT.connected) !== -1) {
-          newMission(t);
+          const carryType = m && !m.startT ? m.missionType : null;
+          const carryNode = m && !m.startT ? m.locationNode : null;
+          newMission(t, carryType, carryNode);
           return;
         }
         if (!m) return;
