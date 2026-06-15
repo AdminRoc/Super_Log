@@ -20,27 +20,50 @@ WF.DisruptionParser = (function () {
     agentCreated:  'OnAgentCreated',
   };
 
-  // Conduit effect ID → Chinese display name.
-  // Buff IDs (31-38) = positive effects when conduit defended.
-  // Debuff IDs (1-25) = negative effects when conduit fails.
-  // IDs that appear in 敌人毒素武器 / 能量消耗 / 群居狩猎野兽 are flagged BAD.
-  // Unverified names are marked 待翻译.
+  // Conduit effect ID → Chinese display name（按维基表格顺序，ID 映射待游戏内验证）
+  // 减益 (debuff) IDs 1-27；增益 (buff) IDs 31-38
   const EFFECT_NAMES = {
-    // ── debuffs ──────────────────────────────────────────────
+    // ── 减益效果 (debuffs) ────────────────────────────────────
     1:  '能量消耗',
-    2:  '敌人毒素武器',
-    3:  '群居狩猎野兽',
-    4:  '待翻译',   5: '待翻译',   6: '待翻译',   7: '待翻译',
-    8:  '待翻译',   9: '待翻译',  12: '待翻译',  13: '待翻译',
-    14: '待翻译',  15: '待翻译',  16: '待翻译',  21: '待翻译',
-    23: '待翻译',  25: '待翻译',
-    // ── buffs ────────────────────────────────────────────────
-    31: '守卫效果', 32: '守卫效果', 33: '守卫效果', 34: '守卫效果',
-    35: '守卫效果', 36: '守卫效果', 37: '守卫效果', 38: '守卫效果',
+    2:  '护盾消耗',
+    3:  '生命值消耗',
+    4:  '敌人速度加成',
+    5:  '敌人伤害加成',
+    6:  '敌人护甲强化',
+    7:  '敌人护盾强化',
+    8:  '敌人使用火焰武器',
+    9:  '敌人使用冰冻武器',
+    10: '敌人使用电击武器',
+    11: '敌人使用毒素武器',
+    12: '敌人获得技能抗性',
+    13: '敌人获得伤害抗性',
+    14: '更强大的密钥输送者',
+    15: '卓越者攻击波',
+    16: '带电导管',
+    17: '安全警报',
+    18: '月震',
+    19: 'Sentient涌入',
+    20: '磁场异常',
+    21: '雷区',
+    22: '尸鬼暴穴',
+    23: '系统超载',
+    24: '机器人的猛攻',
+    25: '虚能导管',
+    26: '群居狩猎野兽',
+    27: '孵窠涌流',
+    // ── 增益效果 (buffs) ──────────────────────────────────────
+    31: '+50% 经验值加成',
+    32: '+50% 资源数量加成',
+    33: '+50% 现金数量加成',
+    34: 'Tenno获得武器吸血效果',
+    35: 'Tenno获得射速加成',
+    36: 'Tenno获得移动速度加成',
+    37: '补给导管',
+    38: '导管卫士',
   };
 
-  // Debuff IDs that should be highlighted red (the three dangerous ones)
-  const BAD_DEBUFF_IDS = new Set([1, 2, 3]);
+  // 危险减益 ID（能量消耗=1，敌人使用毒素武器=11，群居狩猎野兽=26）
+  const BAD_DEBUFF_IDS = new Set([1, 11, 26]);
 
   // NPC path substrings indicating non-combat agents (pets, players, objectives, drones)
   const AGENT_SKIP = ['PetAgent', 'PlayerPawnAgent', 'DefenseAgent', 'CleaningDroneAgent', 'CrewAgent', 'CrewmemberAgent'];
@@ -66,6 +89,7 @@ WF.DisruptionParser = (function () {
         currentRoundSpawned: 0,
         killEvents: [],
         areaEffects: {},      // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
+        _prevLiveAfter: null, // Live count after previous enemy agent was created (for kill delta)
       };
       roundStartT = null;
     }
@@ -134,6 +158,7 @@ WF.DisruptionParser = (function () {
           if (state === 3) {
             mission.roundOpen = true;
             mission.areaEffects = {};   // reset for new round
+            mission._prevLiveAfter = null; // reset Live-delta tracking for new round
             roundStartT = t;
           } else if (state === 4) {
             closeRoundAt(t);
@@ -184,21 +209,44 @@ WF.DisruptionParser = (function () {
           return;
         }
 
-        // Enemy spawn counting — only during active round
+        // Kill + spawn counting via Live-delta on OnAgentCreated lines
+        // Live=X means X agents alive BEFORE this new agent is created.
+        // When Live drops between consecutive enemy spawns, enemies died in between.
+        // SentinelAgent0 (Live=0 or very low) is a sentinel setup/reset — rebase the counter.
         if (mission.roundOpen &&
             line.indexOf(PAT.agentCreated) !== -1 &&
             line.indexOf('/Npc/') !== -1) {
+          // Parse Live value from "Live N"
+          const liveM = /\bLive\s+(\d+)/.exec(line);
+          if (!liveM) return;
+          const liveBefore = parseInt(liveM[1], 10);
+
+          // Check if this is a sentinel agent (named "SentinelAgent")
+          const isSentinel = line.indexOf('SentinelAgent') !== -1;
+
+          if (isSentinel) {
+            // Sentinel resets the baseline without contributing kills or spawns
+            mission._prevLiveAfter = liveBefore + 1;
+            return;
+          }
+
+          // Check skip list (pets, players, drones, etc.)
           let skip = false;
           for (let k = 0; k < AGENT_SKIP.length; k++) {
             if (line.indexOf(AGENT_SKIP[k]) !== -1) { skip = true; break; }
           }
-          if (!skip) mission.currentRoundSpawned++;
-          return;
-        }
+          if (skip) return;
 
-        if (line.indexOf(PAT.killed) !== -1 && mission.roundOpen) {
-          mission.currentRoundKills++;
-          mission.killEvents.push(t);   // store timestamp for chart
+          // Compute kills from Live drop since last tracked agent
+          if (mission._prevLiveAfter !== null) {
+            const kills = Math.max(0, mission._prevLiveAfter - liveBefore);
+            if (kills > 0) {
+              mission.currentRoundKills += kills;
+              for (let ki = 0; ki < kills; ki++) mission.killEvents.push(t);
+            }
+          }
+          mission._prevLiveAfter = liveBefore + 1;
+          mission.currentRoundSpawned++;
           return;
         }
         if (line.indexOf(PAT.totalScore) !== -1) {

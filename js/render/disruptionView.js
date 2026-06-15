@@ -89,7 +89,7 @@ WF.disruptionView = (function () {
 
       tlWrap.appendChild(rows);
       const legend = U.el('div', 'dis-tl-legend');
-      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 / 危险代价 &nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例 · 悬停查看效果名称</span>';
+      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 &nbsp;&nbsp;<span style="color:#ffd700">●</span> 危险Buff效果（已守住）&nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例 · 悬停查看效果名称</span>';
       tlWrap.appendChild(legend);
       container.appendChild(tlWrap);
     }
@@ -120,8 +120,7 @@ WF.disruptionView = (function () {
           if (c.insertRelT != null) tip += (tip ? '\n' : '') + `插入 +${U.fmtDuration(c.insertRelT)}`;
           if (c.doneRelT   != null) tip += (tip ? '\n' : '') + `${c.success ? '守卫成功' : '守卫失败'} +${U.fmtDuration(c.doneRelT)}`;
           if (tip) sp.title = tip;
-          // Highlight bad debuffs with red border
-          if (_isBadDebuff(c)) sp.style.outline = '1.5px solid #ff5f6b';
+          if (_isBadDebuff(c)) sp.style.outline = '1.5px solid #ffd700';
           cd.appendChild(sp);
         });
       }
@@ -256,8 +255,7 @@ WF.disruptionView = (function () {
 
     doneEvts.forEach(ev => {
       const x   = tx(ev.relT).toFixed(1);
-      const isBad = ev.effectKind === 'debuff' && ev.effectId != null && BAD_IDS.has(ev.effectId);
-      const col = isBad ? '#ff5f6b' : ev.success === true ? '#41ff8e' : ev.success === false ? '#ff5f6b' : '#888';
+      const col = _conduitColor(ev);
       const lbl = ev.success === true ? '守卫成功' : ev.success === false ? '守卫失败' : '结果未知';
       const effLabel = ev.effectKind ? _conduitEffectLabel(ev) : '';
       const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''}${effLabel ? ' ' + effLabel : ''} ${lbl} +${U.fmtDuration(ev.relT)}`;
@@ -273,6 +271,8 @@ WF.disruptionView = (function () {
     svgStr += `<text x="${lx + 220}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫成功</text>`;
     svgStr += `<circle cx="${lx + 278}" cy="${legendY + 5}" r="4.5" fill="#ff5f6b" opacity="0.82"/>`;
     svgStr += `<text x="${lx + 288}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫失败</text>`;
+    svgStr += `<circle cx="${lx + 346}" cy="${legendY + 5}" r="4.5" fill="#ffd700" opacity="0.82"/>`;
+    svgStr += `<text x="${lx + 356}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">危险Buff效果</text>`;
     svgStr += `</svg>`;
 
     // ── 容器：小图（可横向滚动） + 点击弹出全屏 ──────────────
@@ -410,28 +410,73 @@ WF.disruptionView = (function () {
   }
 
   // ── Conduit effect helpers ────────────────────────────────
-  // Debuff IDs that are especially dangerous (three bad ones)
-  const BAD_IDS = new Set([1, 2, 3]);
+  // Dangerous debuff IDs (highlighted yellow): 能量消耗(1)、敌人使用毒素武器(11)、群居狩猎野兽(26)
+  const BAD_IDS = new Set([1, 11, 26]);
 
-  // Known debuff ID → Chinese display name
+  // Debuff ID → Chinese display name（按维基减益效果顺序排列，ID 映射待游戏内验证）
   const DEBUFF_NAMES = {
-    1: '能量消耗', 2: '敌人毒素武器', 3: '群居狩猎野兽',
+    1:  '能量消耗',
+    2:  '护盾消耗',
+    3:  '生命值消耗',
+    4:  '敌人速度加成',
+    5:  '敌人伤害加成',
+    6:  '敌人护甲强化',
+    7:  '敌人护盾强化',
+    8:  '敌人使用火焰武器',
+    9:  '敌人使用冰冻武器',
+    10: '敌人使用电击武器',
+    11: '敌人使用毒素武器',
+    12: '敌人获得技能抗性',
+    13: '敌人获得伤害抗性',
+    14: '更强大的密钥输送者',
+    15: '卓越者攻击波',
+    16: '带电导管',
+    17: '安全警报',
+    18: '月震',
+    19: 'Sentient涌入',
+    20: '磁场异常',
+    21: '雷区',
+    22: '尸鬼暴穴',
+    23: '系统超载',
+    24: '机器人的猛攻',
+    25: '虚能导管',
+    26: '群居狩猎野兽',
+    27: '孵窠涌流',
+  };
+
+  // Buff ID → Chinese display name（按维基增益效果顺序排列）
+  const BUFF_NAMES = {
+    31: '+50% 经验值加成',
+    32: '+50% 资源数量加成',
+    33: '+50% 现金数量加成',
+    34: 'Tenno获得武器吸血效果',
+    35: 'Tenno获得射速加成',
+    36: 'Tenno获得移动速度加成',
+    37: '补给导管',
+    38: '导管卫士',
   };
 
   function _isBadDebuff(c) {
     return c.effectKind === 'debuff' && c.effectId != null && BAD_IDS.has(c.effectId);
   }
 
+  function _effectName(c) {
+    if (c.effectKind === 'buff') {
+      return c.effectId != null ? (BUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
+    }
+    return c.effectId != null ? (DEBUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
+  }
+
   function _conduitEffectLabel(c) {
     if (c.effectKind == null) return '';
-    if (c.effectKind === 'buff') return '守卫效果（守卫成功时触发）';
-    const name = c.effectId != null ? (DEBUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
-    return `失守代价: ${name}`;
+    return `Buff效果: ${_effectName(c)}`;
   }
 
   function _conduitColor(c) {
-    if (_isBadDebuff(c)) return '#ff5f6b';   // dangerous debuff → red
-    return c.success === true ? '#41ff8e' : c.success === false ? '#ff5f6b' : '#aaa';
+    if (c.success === false) return '#ff5f6b';   // 失守 → 红色（最高优先级）
+    if (_isBadDebuff(c))     return '#ffd700';   // 危险减益但守住 → 黄色
+    if (c.success === true)  return '#41ff8e';   // 普通成功 → 绿色
+    return '#aaa';
   }
 
   function _st(label, value, cls) {

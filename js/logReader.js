@@ -110,25 +110,31 @@ WF.logReader = (function () {
   }
 
   /* 大文件阈值（字节）：超过此大小使用异步分块扫描 */
-  const LARGE_THRESHOLD = 5 * 1024 * 1024; // 5 MB
-  const CHUNK_LINES = 20000;                // 每块行数，yield 一次
+  const LARGE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
+  const CHUNK_LINES = 25000;                // 每块行数，yield 一次
 
-  /* 异步分块扫描：每 CHUNK_LINES 行 setTimeout(0) yield，保持 UI 响应
+  /* 异步分块扫描：按字符索引逐行扫描，每处理 CHUNK_LINES 行 setTimeout(0) yield，保持 UI 响应。
+   * 与 scan() 共用同一字符扫描逻辑，避免预先 split('\n') 造成的双倍内存占用。
+   * 所有解析器（夜灵/中断/大蜘蛛/仲裁/通用）均通过统一入口受益于此优化。
    * onProgress(pct: 0-100)  — 可选进度回调
    * onDone(scanResult)       — 完成回调 */
   function scanAsync(text, parsers, onProgress, onDone) {
     const state = _mkState();
-    const lines = text.split('\n');
-    const total = lines.length;
-    let pos = 0;
+    const len   = text.length;
+    let charPos = 0;
+    let linesInBatch = 0;
 
     function step() {
-      const end = Math.min(pos + CHUNK_LINES, total);
-      for (; pos < end; pos++) {
-        processLine(lines[pos], state, parsers);
+      linesInBatch = 0;
+      while (charPos < len && linesInBatch < CHUNK_LINES) {
+        let nl = text.indexOf('\n', charPos);
+        if (nl === -1) nl = len;
+        processLine(text.substring(charPos, nl), state, parsers);
+        charPos = nl + 1;
+        linesInBatch++;
       }
-      if (onProgress) onProgress(Math.round((pos / total) * 95)); // 留 5% 给 finish
-      if (pos < total) {
+      if (onProgress) onProgress(Math.round((charPos / len) * 95)); // 留 5% 给 finish
+      if (charPos < len) {
         setTimeout(step, 0);
       } else {
         for (let i = 0; i < parsers.length; i++) {
