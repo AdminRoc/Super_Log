@@ -24,12 +24,6 @@ WF.disruptionView = (function () {
       const rate = (rec.conduitRate * 100).toFixed(1) + '%';
       hero.appendChild(_st('导管成功率', `${rate}（${rec.successConduits}/${rec.totalConduits}）`, ''));
     }
-    if (rec.keysDropped > 0) {
-      const utilRate = rec.keysDropped > 0
-        ? (rec.keysInserted / rec.keysDropped * 100).toFixed(1) + '%'
-        : '—';
-      hero.appendChild(_st('钥匙利用率', `${rec.keysInserted} / ${rec.keysDropped}（${utilRate}）`, ''));
-    }
     if (rec.name) hero.appendChild(_st('任务地图', rec.name, ''));
     container.appendChild(hero);
 

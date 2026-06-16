@@ -9,7 +9,6 @@ WF.DisruptionParser = (function () {
     ssStarted:     'SS_WAITING_FOR_PLAYERS to SS_STARTED',
     modeState:     'SentientArtifactMission.lua: ModeState =',
     randomized:    'SentientArtifactMission.lua: Disruption: Randomized ',
-    keyDropped:    'Disruption: Artifact',   // 与 ' unlocked' 联合检测 → 钥匙掉落
     conduitStart:  'SentientArtifactMission.lua: Disruption: Starting defense for artifact',
     conduitDone:   'SentientArtifactMission.lua: Disruption: Completed defense for artifact',
     conduitFail:   'SentientArtifactMission.lua: Disruption: Failed defense for artifact',
@@ -89,11 +88,8 @@ WF.DisruptionParser = (function () {
         currentRoundKills: 0,
         currentRoundSpawned: 0,
         killEvents: [],
-        areaEffects: {},           // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
-        _prevLiveAfter: null,      // Live count after previous enemy agent was created (for kill delta)
-        keysDropped: 0,            // 整局累计掉落钥匙数（Demolyst killed → Artifact N unlocked）
-        keysInserted: 0,           // 整局累计插入钥匙数（Starting defense for artifact N）
-        currentRoundKeysDropped: 0,
+        areaEffects: {},      // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
+        _prevLiveAfter: null, // Live count after previous enemy agent was created (for kill delta)
       };
       roundStartT = null;
     }
@@ -127,16 +123,12 @@ WF.DisruptionParser = (function () {
         conduits,
         kills:           mission.currentRoundKills,
         spawned:         mission.currentRoundSpawned,
-        keysDropped:     mission.currentRoundKeysDropped,
-        keysInserted:    conduits.filter(c => c.insertT != null).length,
       });
-      mission.keysDropped  += mission.currentRoundKeysDropped;
       mission.prevEndT = t;
       mission.openConduits = [];
       mission.roundOpen = false;
       mission.currentRoundKills = 0;
       mission.currentRoundSpawned = 0;
-      mission.currentRoundKeysDropped = 0;
       mission._prevLiveAfter = null;
       roundStartT = null;
     }
@@ -185,15 +177,8 @@ WF.DisruptionParser = (function () {
           }
           return;
         }
-        // 钥匙掉落：Demolyst 被击杀后导管解锁（"Artifact N unlocked"）
-        if (line.indexOf(PAT.keyDropped) !== -1 && line.indexOf(' unlocked') !== -1) {
-          mission.isDisruption = true;
-          mission.currentRoundKeysDropped++;
-          return;
-        }
         if (line.indexOf(PAT.conduitStart) !== -1) {
           mission.isDisruption = true;
-          mission.keysInserted++;
           const rBase  = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
           const artRx  = /Starting defense for artifact\s+(\d+)/.exec(line);
           const artNum = artRx ? parseInt(artRx[1], 10) : null;
@@ -292,8 +277,6 @@ WF.DisruptionParser = (function () {
               successConduits: successConds, totalConduits: totalConds,
               perfScore: ps, perfGrade: pg,
               killEvents: mission.killEvents,
-              keysDropped:  mission.keysDropped,
-              keysInserted: mission.keysInserted,
             });
           }
           reset();
