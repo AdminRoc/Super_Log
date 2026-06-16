@@ -695,11 +695,12 @@ body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
   color: var(--c-text2); text-decoration: none; font-size: 12px; letter-spacing: 2px;
   padding: 5px 18px; border-radius: 20px;
   border: 1px solid rgba(255,255,255,0.1);
-  transition: color 0.22s, border-color 0.22s, background 0.22s, box-shadow 0.22s;
+  transition: color 0.22s, border-color 0.22s, background 0.22s, box-shadow 0.22s, text-shadow 0.22s;
 }
 .footer-link:hover {
   color: var(--c-teal); border-color: rgba(95,208,232,0.4);
   background: rgba(95,208,232,0.06); box-shadow: 0 0 12px rgba(95,208,232,0.1);
+  text-shadow: 0 0 8px rgba(95,208,232,0.75), 0 0 18px rgba(95,208,232,0.35);
 }
 /* ================= 中断·传导体时间轴（HTML div 版，无 SVG 拉伸问题） ================= */
 .dis-tl-wrap { margin-top: 18px; }
@@ -762,7 +763,22 @@ body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
 }
 
 .footer-sep { color: rgba(255,255,255,0.15); font-size: 16px; }
-.footer-copy { font-size: 11.5px; color: var(--c-text2); opacity: 0.38; letter-spacing: 1.5px; }
+/* 底栏统一亮度：所有文字使用同一颜色层，链接悬停时荧光高亮 */
+.footer-copy  { font-size: 11.5px; color: rgba(160,200,220,0.45); letter-spacing: 1.5px; }
+.footer-beian {
+  font-size: 11.5px; color: rgba(160,200,220,0.45); letter-spacing: 1px;
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+}
+.footer-beian-icon { height: 14px; width: 14px; vertical-align: middle; opacity: 0.7; }
+.footer-beian a, .footer-thanks a {
+  color: rgba(160,200,220,0.45); text-decoration: none;
+  transition: color 0.22s, text-shadow 0.22s;
+}
+.footer-beian a:hover, .footer-thanks a:hover {
+  color: var(--c-teal);
+  text-shadow: 0 0 8px rgba(95,208,232,0.75), 0 0 18px rgba(95,208,232,0.35);
+}
+.footer-thanks { font-size: 12px; color: rgba(160,200,220,0.45); letter-spacing: 1px; }
 
 /* ================= 鼠标拖尾 ================= */
 @keyframes wordFly {
