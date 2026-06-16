@@ -9,6 +9,7 @@ WF.DisruptionParser = (function () {
     ssStarted:     'SS_WAITING_FOR_PLAYERS to SS_STARTED',
     modeState:     'SentientArtifactMission.lua: ModeState =',
     randomized:    'SentientArtifactMission.lua: Disruption: Randomized ',
+    keyDropped:    'Disruption: Artifact',   // 与 ' unlocked' 联合检测 → 钥匙掉落
     conduitStart:  'SentientArtifactMission.lua: Disruption: Starting defense for artifact',
     conduitDone:   'SentientArtifactMission.lua: Disruption: Completed defense for artifact',
     conduitFail:   'SentientArtifactMission.lua: Disruption: Failed defense for artifact',
@@ -32,14 +33,14 @@ WF.DisruptionParser = (function () {
     7:  '待翻译',
     8:  '敌人技能抗性',
     9:  '敌人速度加成',
-    10: '待翻译',
+    10: '虚能导管',
     11: '待翻译',
     12: '通电的导管',
     13: '敌方火焰武器',
     14: '敌方冰冻武器',
-    15: '待翻译',
+    15: '敌方毒素武器',
     16: '敌方电击武器',
-    17: '待翻译',
+    17: '磁场异常',
     18: '待翻译',
     19: '待翻译',
     20: '待翻译',
@@ -50,6 +51,7 @@ WF.DisruptionParser = (function () {
     25: '雷区',
     26: '待翻译',
     27: '待翻译',
+    28: '灵刹涌入',
     // ── 增益效果 (buffs) ── 已校准 ────────────────────────────
     31: '补给导管',
     32: 'Tenno速度加成',
@@ -61,9 +63,8 @@ WF.DisruptionParser = (function () {
     38: '导管卫士',
   };
 
-  // 危险减益 ID（需黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，群居狩猎野兽=23
-  // 敌人毒素武器 ID 待校准后补充
-  const BAD_DEBUFF_IDS = new Set([3, 6, 23]);
+  // 危险减益 ID（需黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，群居狩猎野兽=23，敌方毒素武器=15
+  const BAD_DEBUFF_IDS = new Set([3, 6, 15, 23]);
 
   // NPC path substrings indicating non-combat agents (pets, players, objectives, drones)
   const AGENT_SKIP = ['PetAgent', 'PlayerPawnAgent', 'DefenseAgent', 'CleaningDroneAgent', 'CrewAgent', 'CrewmemberAgent'];
@@ -88,8 +89,11 @@ WF.DisruptionParser = (function () {
         currentRoundKills: 0,
         currentRoundSpawned: 0,
         killEvents: [],
-        areaEffects: {},      // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
-        _prevLiveAfter: null, // Live count after previous enemy agent was created (for kill delta)
+        areaEffects: {},           // area 1-4 → {kind:'buff'|'debuff', id:N} for current round
+        _prevLiveAfter: null,      // Live count after previous enemy agent was created (for kill delta)
+        keysDropped: 0,            // 整局累计掉落钥匙数（Demolyst killed → Artifact N unlocked）
+        keysInserted: 0,           // 整局累计插入钥匙数（Starting defense for artifact N）
+        currentRoundKeysDropped: 0,
       };
       roundStartT = null;
     }
@@ -123,12 +127,16 @@ WF.DisruptionParser = (function () {
         conduits,
         kills:           mission.currentRoundKills,
         spawned:         mission.currentRoundSpawned,
+        keysDropped:     mission.currentRoundKeysDropped,
+        keysInserted:    conduits.filter(c => c.insertT != null).length,
       });
+      mission.keysDropped  += mission.currentRoundKeysDropped;
       mission.prevEndT = t;
       mission.openConduits = [];
       mission.roundOpen = false;
       mission.currentRoundKills = 0;
       mission.currentRoundSpawned = 0;
+      mission.currentRoundKeysDropped = 0;
       mission._prevLiveAfter = null;
       roundStartT = null;
     }
@@ -177,8 +185,15 @@ WF.DisruptionParser = (function () {
           }
           return;
         }
+        // 钥匙掉落：Demolyst 被击杀后导管解锁（"Artifact N unlocked"）
+        if (line.indexOf(PAT.keyDropped) !== -1 && line.indexOf(' unlocked') !== -1) {
+          mission.isDisruption = true;
+          mission.currentRoundKeysDropped++;
+          return;
+        }
         if (line.indexOf(PAT.conduitStart) !== -1) {
           mission.isDisruption = true;
+          mission.keysInserted++;
           const rBase  = roundStartT !== null ? roundStartT : (mission.prevEndT || effectiveStart());
           const artRx  = /Starting defense for artifact\s+(\d+)/.exec(line);
           const artNum = artRx ? parseInt(artRx[1], 10) : null;
@@ -277,6 +292,8 @@ WF.DisruptionParser = (function () {
               successConduits: successConds, totalConduits: totalConds,
               perfScore: ps, perfGrade: pg,
               killEvents: mission.killEvents,
+              keysDropped:  mission.keysDropped,
+              keysInserted: mission.keysInserted,
             });
           }
           reset();

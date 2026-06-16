@@ -24,6 +24,12 @@ WF.disruptionView = (function () {
       const rate = (rec.conduitRate * 100).toFixed(1) + '%';
       hero.appendChild(_st('导管成功率', `${rate}（${rec.successConduits}/${rec.totalConduits}）`, ''));
     }
+    if (rec.keysDropped > 0) {
+      const utilRate = rec.keysDropped > 0
+        ? (rec.keysInserted / rec.keysDropped * 100).toFixed(1) + '%'
+        : '—';
+      hero.appendChild(_st('钥匙利用率', `${rec.keysInserted} / ${rec.keysDropped}（${utilRate}）`, ''));
+    }
     if (rec.name) hero.appendChild(_st('任务地图', rec.name, ''));
     container.appendChild(hero);
 
@@ -443,9 +449,8 @@ WF.disruptionView = (function () {
   }
 
   // ── Conduit effect helpers ────────────────────────────────
-  // 危险减益 ID（黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，群居狩猎野兽=23
-  // 敌人毒素武器 ID 待校准后补充
-  const BAD_IDS = new Set([3, 6, 23]);
+  // 危险减益 ID（黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，敌方毒素武器=15，群居狩猎野兽=23
+  const BAD_IDS = new Set([3, 6, 15, 23]);
 
   // 减益 ID → 中文名（已用实测 log 全面校准）
   const DEBUFF_NAMES = {
@@ -458,14 +463,14 @@ WF.disruptionView = (function () {
     7:  '待翻译',
     8:  '敌人技能抗性',
     9:  '敌人速度加成',
-    10: '待翻译',
+    10: '虚能导管',
     11: '待翻译',
     12: '通电的导管',
     13: '敌方火焰武器',
     14: '敌方冰冻武器',
-    15: '待翻译',
+    15: '敌方毒素武器',
     16: '敌方电击武器',
-    17: '待翻译',
+    17: '磁场异常',
     18: '待翻译',
     19: '待翻译',
     20: '待翻译',
@@ -476,6 +481,7 @@ WF.disruptionView = (function () {
     25: '雷区',
     26: '待翻译',
     27: '待翻译',
+    28: '灵刹涌入',
   };
 
   // 增益 ID → 中文名（已用实测 log 全面校准）
@@ -497,8 +503,9 @@ WF.disruptionView = (function () {
   function _effectName(c) {
     if (c.effectId == null) return '—';
     const id = c.effectId;
-    if (c.effectKind === 'buff') return BUFF_NAMES[id] || '待翻译';
-    return DEBUFF_NAMES[id] || '待翻译';
+    const name = c.effectKind === 'buff' ? (BUFF_NAMES[id] || null) : (DEBUFF_NAMES[id] || null);
+    if (name === null || name === '待翻译') return `[${id}] 待翻译`;
+    return name;
   }
 
   function _conduitEffectLabel(c) {
