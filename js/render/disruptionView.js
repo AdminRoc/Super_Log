@@ -220,7 +220,7 @@ WF.disruptionView = (function () {
       d += ` H ${(ML + plotW).toFixed(1)}`;
       s += `<path d="${d} V ${xAxisY.toFixed(1)} Z" fill="rgba(65,255,142,0.07)" stroke="none"/>`;
       s += `<path d="${d}" fill="none" stroke="#41ff8e" stroke-width="1.5" stroke-linejoin="round"/>`;
-      s += `<text x="${(ML + plotW + 4).toFixed(1)}" y="${ty(totalKills).toFixed(1)}" fill="#41ff8e" font-size="10" dominant-baseline="middle">${totalKills}</text>`;
+      s += `<text x="${(W - 3).toFixed(1)}" y="${(ty(totalKills) - 7).toFixed(1)}" fill="#41ff8e" font-size="10" text-anchor="end" dominant-baseline="middle">${totalKills}</text>`;
     }
 
     s += `<line x1="${ML}" y1="${xAxisY}" x2="${(ML + plotW).toFixed(1)}" y2="${xAxisY}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
