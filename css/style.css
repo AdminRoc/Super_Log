@@ -127,6 +127,7 @@ main { position: relative; z-index: 1; max-width: 1380px; margin: 0 auto; paddin
 #dropzone {
   position: relative; margin: 26px 0 20px; cursor: pointer; overflow: hidden;
   border: 1.5px dashed rgba(95, 208, 232, 0.35); border-radius: var(--r-lg);
+  display: flex; align-items: stretch;
   background: var(--c-card);
   transition: border-color var(--ease-fast), box-shadow var(--ease-med);
 }
@@ -146,8 +147,29 @@ main { position: relative; z-index: 1; max-width: 1380px; margin: 0 auto; paddin
   animation: dzScan 6s linear infinite;
 }
 @keyframes dzScan { 0% { left: -140px; } 100% { left: 110%; } }
+.dz-frame { flex: 4; }
+.dz-shortcut {
+  flex: 1; min-width: 140px; max-width: 200px;
+  border-left: 1.5px dashed rgba(95, 208, 232, 0.25);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; padding: 18px 14px; cursor: pointer; z-index: 1; text-align: center;
+  transition: background 0.22s, border-color 0.22s;
+}
+.dz-shortcut:hover { background: rgba(95, 208, 232, 0.06); border-color: rgba(95, 208, 232, 0.5); }
+.dz-sc-icon { font-size: 18px; color: var(--c-teal); opacity: 0.75; line-height: 1; }
+.dz-sc-main { font-size: 12px; color: var(--c-teal); letter-spacing: 1px; margin-top: 2px; }
+.dz-sc-path {
+  font-size: 9.5px; color: var(--c-text2); font-family: monospace;
+  word-break: break-all; opacity: 0.7; line-height: 1.4;
+  background: rgba(255,255,255,0.04); border-radius: 4px; padding: 3px 6px;
+}
+.dz-sc-tip { font-size: 11px; color: var(--c-text2); line-height: 1.6; opacity: 0.8; }
+.dz-sc-tip b { color: var(--c-white); font-weight: normal; }
+.dz-sc-feedback { font-size: 11.5px; color: var(--c-teal); min-height: 15px; letter-spacing: 1px; }
 body.has-data .dz-frame { padding: 16px 26px; }
 body.has-data .dz-icon, body.has-data .dz-hint { display: none; }
+body.has-data .dz-shortcut { padding: 10px 14px; gap: 4px; }
+body.has-data .dz-sc-tip { display: none; }
 
 /* ================= 工作区 ================= */
 #workspace {

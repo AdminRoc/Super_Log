@@ -21,6 +21,23 @@
     const fileInput = $('file-input');
 
     drop.addEventListener('click', () => fileInput.click());
+
+    // 右侧快捷框：复制路径，阻止冒泡避免触发文件选择
+    const shortcut = $('dz-shortcut');
+    const feedback = $('dz-sc-feedback');
+    let fbTimer = null;
+    shortcut.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText('%LOCALAPPDATA%\\Warframe').then(() => {
+        feedback.textContent = '✓ 已复制！';
+        clearTimeout(fbTimer);
+        fbTimer = setTimeout(() => { feedback.textContent = ''; }, 2000);
+      }).catch(() => {
+        feedback.textContent = '复制失败，请手动复制';
+        clearTimeout(fbTimer);
+        fbTimer = setTimeout(() => { feedback.textContent = ''; }, 2500);
+      });
+    });
     fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
 
     ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
