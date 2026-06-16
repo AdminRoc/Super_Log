@@ -1,7 +1,7 @@
 window.WF = window.WF || {};
 
 WF.DisruptionParser = (function () {
-  const MIN_ROUNDS = 45;
+  const MIN_ROUNDS = 1;
 
   const PAT = {
     connected:     'Game successfully connected to:',
@@ -16,54 +16,54 @@ WF.DisruptionParser = (function () {
     eom:           'ExtractionTimer.lua: EOM: All players extracting',
     abort:         'TopMenu.lua: Abort',
     failed:        'EndOfMatch.lua: Mission Failed',
-    killed:        'was killed by',
     agentCreated:  'OnAgentCreated',
   };
 
   // Conduit effect ID → Chinese display name（按维基表格顺序，ID 映射待游戏内验证）
   // 减益 (debuff) IDs 1-27；增益 (buff) IDs 31-38
   const EFFECT_NAMES = {
-    // ── 减益效果 (debuffs) ────────────────────────────────────
-    1:  '能量消耗',
-    2:  '护盾消耗',
-    3:  '生命值消耗',
-    4:  '敌人速度加成',
-    5:  '敌人伤害加成',
-    6:  '敌人护甲强化',
-    7:  '敌人护盾强化',
-    8:  '敌人使用火焰武器',
-    9:  '敌人使用冰冻武器',
-    10: '敌人使用电击武器',
-    11: '敌人使用毒素武器',
-    12: '敌人获得技能抗性',
-    13: '敌人获得伤害抗性',
-    14: '更强大的密钥输送者',
-    15: '卓越者攻击波',
-    16: '带电导管',
-    17: '安全警报',
-    18: '月震',
-    19: 'Sentient涌入',
-    20: '磁场异常',
-    21: '雷区',
-    22: '尸鬼暴穴',
-    23: '系统超载',
-    24: '机器人的猛攻',
-    25: '虚能导管',
-    26: '群居狩猎野兽',
-    27: '孵窠涌流',
-    // ── 增益效果 (buffs) ──────────────────────────────────────
-    31: '+50% 经验值加成',
-    32: '+50% 资源数量加成',
-    33: '+50% 现金数量加成',
-    34: 'Tenno获得武器吸血效果',
-    35: 'Tenno获得射速加成',
-    36: 'Tenno获得移动速度加成',
-    37: '补给导管',
+    // ── 减益效果 (debuffs) ── 已校准 ID 以实测 log 为准 ────────
+    1:  '护盾消耗',
+    2:  '生命值消耗',
+    3:  '能量值消耗',
+    4:  '敌人伤害加成',
+    5:  '待翻译',
+    6:  '更强大的密钥搬运者',
+    7:  '待翻译',
+    8:  '敌人技能抗性',
+    9:  '敌人速度加成',
+    10: '待翻译',
+    11: '待翻译',
+    12: '通电的导管',
+    13: '敌方火焰武器',
+    14: '敌方冰冻武器',
+    15: '待翻译',
+    16: '敌方电击武器',
+    17: '待翻译',
+    18: '待翻译',
+    19: '待翻译',
+    20: '待翻译',
+    21: '敌人护甲增强',
+    22: '待翻译',
+    23: '群居狩猎野兽',
+    24: '待翻译',
+    25: '雷区',
+    26: '待翻译',
+    27: '待翻译',
+    // ── 增益效果 (buffs) ── 已校准 ────────────────────────────
+    31: '补给导管',
+    32: 'Tenno速度加成',
+    33: '50%经验值加成',
+    34: '50%资源加成',
+    35: '50%现金加成',
+    36: 'Tenno武器吸血加成',
+    37: 'Tenno射速加成',
     38: '导管卫士',
   };
 
-  // 危险减益 ID（能量消耗=1，敌人使用毒素武器=11，群居狩猎野兽=26）
-  const BAD_DEBUFF_IDS = new Set([1, 11, 26]);
+  // 危险减益 ID（需黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，群居狩猎野兽=23
+  // 敌人毒素武器 ID 待校准后补充
+  const BAD_DEBUFF_IDS = new Set([3, 6, 23]);
 
   // NPC path substrings indicating non-combat agents (pets, players, objectives, drones)
   const AGENT_SKIP = ['PetAgent', 'PlayerPawnAgent', 'DefenseAgent', 'CleaningDroneAgent', 'CrewAgent', 'CrewmemberAgent'];
@@ -129,6 +129,7 @@ WF.DisruptionParser = (function () {
       mission.roundOpen = false;
       mission.currentRoundKills = 0;
       mission.currentRoundSpawned = 0;
+      mission._prevLiveAfter = null;
       roundStartT = null;
     }
 

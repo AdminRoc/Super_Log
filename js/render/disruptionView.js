@@ -89,7 +89,7 @@ WF.disruptionView = (function () {
 
       tlWrap.appendChild(rows);
       const legend = U.el('div', 'dis-tl-legend');
-      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 &nbsp;&nbsp;<span style="color:#ffd700">●</span> 危险Buff效果（已守住）&nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例 · 悬停查看效果名称</span>';
+      legend.innerHTML = '<span class="cd ok">●</span> 守卫成功 &nbsp;&nbsp;<span class="cd fail">●</span> 守卫失败 &nbsp;&nbsp;<span style="color:#ffd700">●</span> 危险Buff（已守住）&nbsp;&nbsp;<span style="color:#c97fff">●</span> 危险Buff（已失守）&nbsp;&nbsp;<span style="color:var(--c-text2);font-size:11px">横向位置 = 插入时间占本轮时长的比例 · 悬停查看效果名称</span>';
       tlWrap.appendChild(legend);
       container.appendChild(tlWrap);
     }
@@ -144,8 +144,9 @@ WF.disruptionView = (function () {
       '每轮信息依赖任务房主（Host）日志。击杀/生成均限于轮次战斗期间（ModeState=3→4）。折线图可点击全屏查看；悬停标记可见精确时间戳。'));
   }
 
-  // ── 击杀走势折线图构建 ─────────────────────────────────────
-  function _buildKillChart(rec) {
+  // ── SVG 字符串构建（纯函数，W 可变，供全屏缩放重渲染） ──────
+  function _buildChartSvgStr(rec, W) {
+    const H = 400;
     const start = rec.startT;
     const dur   = rec.totalDuration;
 
@@ -170,14 +171,10 @@ WF.disruptionView = (function () {
       });
     });
 
-    // ── SVG layout ──────────────────────────────────────────
-    const pxPerMin = 50;
-    const W    = Math.max(1400, Math.ceil(dur / 60) * pxPerMin + 120);
-    const H    = 400;
-    const ML   = 72, MR = 24, MT = 36;
+    const ML = 72, MR = 24, MT = 36;
     const plotH = 210;
     const plotW = W - ML - MR;
-    const xAxisY = MT + plotH;
+    const xAxisY  = MT + plotH;
     const stripY   = xAxisY + 30;
     const insRowY  = stripY + 12;
     const doneRowY = stripY + 36;
@@ -191,26 +188,26 @@ WF.disruptionView = (function () {
     const niceY = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
     const tickY = totalKills > 0 ? (niceY.find(n => n >= totalKills / 8) || 1000) : 10;
 
-    let svgStr = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;font-family:inherit">`;
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;font-family:inherit">`;
 
-    svgStr += `<rect x="${ML}" y="${MT}" width="${plotW}" height="${plotH}" fill="rgba(255,255,255,0.015)" rx="2"/>`;
+    s += `<rect x="${ML}" y="${MT}" width="${plotW}" height="${plotH}" fill="rgba(255,255,255,0.015)" rx="2"/>`;
 
     rec.rounds.forEach(r => {
       const x = tx(r.startT - start).toFixed(1);
-      svgStr += `<line x1="${x}" y1="${MT}" x2="${x}" y2="${xAxisY}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+      s += `<line x1="${x}" y1="${MT}" x2="${x}" y2="${xAxisY}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
     });
     rec.rounds
       .filter((r, i) => i === 0 || r.index % 5 === 0)
       .forEach(r => {
         const x = tx(r.startT - start).toFixed(1);
-        svgStr += `<text x="${x}" y="${MT - 5}" fill="var(--c-text2)" font-size="9" text-anchor="middle">R${r.index}</text>`;
+        s += `<text x="${x}" y="${MT - 5}" fill="var(--c-text2)" font-size="9" text-anchor="middle">R${r.index}</text>`;
       });
 
     for (let k = tickY; k <= totalKills + tickY; k += tickY) {
       const y = ty(k);
       if (y < MT - 2) break;
-      svgStr += `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${(ML + plotW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="4,4"/>`;
-      svgStr += `<text x="${(ML - 6).toFixed(1)}" y="${(y + 4).toFixed(1)}" fill="var(--c-text2)" font-size="10" text-anchor="end">${k}</text>`;
+      s += `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${(ML + plotW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="4,4"/>`;
+      s += `<text x="${(ML - 6).toFixed(1)}" y="${(y + 4).toFixed(1)}" fill="var(--c-text2)" font-size="10" text-anchor="end">${k}</text>`;
     }
 
     if (killTimes.length > 0) {
@@ -221,28 +218,28 @@ WF.disruptionView = (function () {
         d += ` H ${tx(relT).toFixed(1)} V ${ty(k).toFixed(1)}`;
       }
       d += ` H ${(ML + plotW).toFixed(1)}`;
-      svgStr += `<path d="${d} V ${xAxisY.toFixed(1)} Z" fill="rgba(65,255,142,0.07)" stroke="none"/>`;
-      svgStr += `<path d="${d}" fill="none" stroke="#41ff8e" stroke-width="1.5" stroke-linejoin="round"/>`;
-      svgStr += `<text x="${(ML + plotW + 4).toFixed(1)}" y="${ty(totalKills).toFixed(1)}" fill="#41ff8e" font-size="10" dominant-baseline="middle">${totalKills}</text>`;
+      s += `<path d="${d} V ${xAxisY.toFixed(1)} Z" fill="rgba(65,255,142,0.07)" stroke="none"/>`;
+      s += `<path d="${d}" fill="none" stroke="#41ff8e" stroke-width="1.5" stroke-linejoin="round"/>`;
+      s += `<text x="${(ML + plotW + 4).toFixed(1)}" y="${ty(totalKills).toFixed(1)}" fill="#41ff8e" font-size="10" dominant-baseline="middle">${totalKills}</text>`;
     }
 
-    svgStr += `<line x1="${ML}" y1="${xAxisY}" x2="${(ML + plotW).toFixed(1)}" y2="${xAxisY}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
+    s += `<line x1="${ML}" y1="${xAxisY}" x2="${(ML + plotW).toFixed(1)}" y2="${xAxisY}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
 
     for (let t2 = 0; t2 <= dur + tickX * 0.5; t2 += tickX) {
       if (t2 > dur + 1) break;
       const x  = tx(t2).toFixed(1);
       const mm = Math.floor(t2 / 60);
       const ss = String(Math.floor(t2 % 60)).padStart(2, '0');
-      svgStr += `<line x1="${x}" y1="${xAxisY}" x2="${x}" y2="${xAxisY + 5}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
-      svgStr += `<text x="${x}" y="${xAxisY + 17}" fill="var(--c-text2)" font-size="10" text-anchor="middle">${mm}:${ss}</text>`;
+      s += `<line x1="${x}" y1="${xAxisY}" x2="${x}" y2="${xAxisY + 5}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
+      s += `<text x="${x}" y="${xAxisY + 17}" fill="var(--c-text2)" font-size="10" text-anchor="middle">${mm}:${ss}</text>`;
     }
 
-    svgStr += `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${xAxisY}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
+    s += `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${xAxisY}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
     const ylx = ML - 52, yly = MT + plotH / 2;
-    svgStr += `<text transform="rotate(-90,${ylx},${yly})" x="${ylx}" y="${yly}" fill="var(--c-text2)" font-size="10" text-anchor="middle" dominant-baseline="middle">累计击杀数</text>`;
-    svgStr += `<line x1="${ML}" y1="${stripY + 2}" x2="${(ML + plotW).toFixed(1)}" y2="${stripY + 2}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
-    svgStr += `<text x="${ML - 4}" y="${insRowY + 4}" fill="#5bc8ff" font-size="9" text-anchor="end">插入</text>`;
-    svgStr += `<text x="${ML - 4}" y="${doneRowY + 4}" fill="var(--c-text2)" font-size="9" text-anchor="end">完成</text>`;
+    s += `<text transform="rotate(-90,${ylx},${yly})" x="${ylx}" y="${yly}" fill="var(--c-text2)" font-size="10" text-anchor="middle" dominant-baseline="middle">累计击杀数</text>`;
+    s += `<line x1="${ML}" y1="${stripY + 2}" x2="${(ML + plotW).toFixed(1)}" y2="${stripY + 2}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+    s += `<text x="${ML - 4}" y="${insRowY + 4}" fill="#5bc8ff" font-size="9" text-anchor="end">插入</text>`;
+    s += `<text x="${ML - 4}" y="${doneRowY + 4}" fill="var(--c-text2)" font-size="9" text-anchor="end">完成</text>`;
 
     insertEvts.forEach(ev => {
       const effLabel = ev.effectKind ? _conduitEffectLabel(ev) : '';
@@ -250,7 +247,7 @@ WF.disruptionView = (function () {
       const x  = tx(ev.relT);
       const x1 = x.toFixed(1), x2 = (x - 4).toFixed(1), x3 = (x + 4).toFixed(1);
       const y1 = (insRowY - 7).toFixed(1), y23 = (insRowY + 5).toFixed(1);
-      svgStr += `<polygon points="${x1},${y1} ${x2},${y23} ${x3},${y23}" fill="#5bc8ff" opacity="0.85"><title>${tip}</title></polygon>`;
+      s += `<polygon points="${x1},${y1} ${x2},${y23} ${x3},${y23}" fill="#5bc8ff" opacity="0.85"><title>${tip}</title></polygon>`;
     });
 
     doneEvts.forEach(ev => {
@@ -259,27 +256,36 @@ WF.disruptionView = (function () {
       const lbl = ev.success === true ? '守卫成功' : ev.success === false ? '守卫失败' : '结果未知';
       const effLabel = ev.effectKind ? _conduitEffectLabel(ev) : '';
       const tip = `R${ev.round}${ev.artNum != null ? ' 导管' + ev.artNum : ''}${effLabel ? ' ' + effLabel : ''} ${lbl} +${U.fmtDuration(ev.relT)}`;
-      svgStr += `<circle cx="${x}" cy="${doneRowY}" r="4.5" fill="${col}" opacity="0.82"><title>${tip}</title></circle>`;
+      s += `<circle cx="${x}" cy="${doneRowY}" r="4.5" fill="${col}" opacity="0.82"><title>${tip}</title></circle>`;
     });
 
     const lx = ML;
-    svgStr += `<rect x="${lx}" y="${legendY}" width="18" height="2.5" rx="1" fill="#41ff8e"/>`;
-    svgStr += `<text x="${lx + 22}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">击杀累计折线</text>`;
-    svgStr += `<polygon points="${lx+105},${legendY-1} ${lx+101},${legendY+11} ${lx+109},${legendY+11}" fill="#5bc8ff" opacity="0.85"/>`;
-    svgStr += `<text x="${lx + 114}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">钥匙插入</text>`;
-    svgStr += `<circle cx="${lx + 210}" cy="${legendY + 5}" r="4.5" fill="#41ff8e" opacity="0.82"/>`;
-    svgStr += `<text x="${lx + 220}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫成功</text>`;
-    svgStr += `<circle cx="${lx + 278}" cy="${legendY + 5}" r="4.5" fill="#ff5f6b" opacity="0.82"/>`;
-    svgStr += `<text x="${lx + 288}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫失败</text>`;
-    svgStr += `<circle cx="${lx + 346}" cy="${legendY + 5}" r="4.5" fill="#ffd700" opacity="0.82"/>`;
-    svgStr += `<text x="${lx + 356}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">危险Buff效果</text>`;
-    svgStr += `</svg>`;
+    s += `<rect x="${lx}" y="${legendY}" width="18" height="2.5" rx="1" fill="#41ff8e"/>`;
+    s += `<text x="${lx + 22}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">击杀累计折线</text>`;
+    s += `<polygon points="${lx+105},${legendY-1} ${lx+101},${legendY+11} ${lx+109},${legendY+11}" fill="#5bc8ff" opacity="0.85"/>`;
+    s += `<text x="${lx + 114}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">钥匙插入</text>`;
+    s += `<circle cx="${lx + 210}" cy="${legendY + 5}" r="4.5" fill="#41ff8e" opacity="0.82"/>`;
+    s += `<text x="${lx + 220}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫成功</text>`;
+    s += `<circle cx="${lx + 278}" cy="${legendY + 5}" r="4.5" fill="#ff5f6b" opacity="0.82"/>`;
+    s += `<text x="${lx + 288}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">守卫失败</text>`;
+    s += `<circle cx="${lx + 346}" cy="${legendY + 5}" r="4.5" fill="#ffd700" opacity="0.82"/>`;
+    s += `<text x="${lx + 356}" y="${legendY + 10}" fill="var(--c-text2)" font-size="10">危险Buff效果</text>`;
+    s += `</svg>`;
 
-    // ── 容器：小图（可横向滚动） + 点击弹出全屏 ──────────────
+    const tipData = { ML, MT, plotH, plotW, xAxisY, W, dur, killTimes, totalKills, roundCount: rec.roundCount };
+    return { svgStr: s, tipData };
+  }
+
+  // ── 击杀走势折线图构建（小图容器 + 全屏入口） ────────────────
+  function _buildKillChart(rec) {
+    const pxPerMin = 50;
+    const baseW = Math.max(1400, Math.ceil(rec.totalDuration / 60) * pxPerMin + 120);
+    const { svgStr, tipData } = _buildChartSvgStr(rec, baseW);
+
     const section = U.el('div', 'chart-box dis-tl-wrap');
     section.appendChild(U.el('div', 'dis-tl-title', '击杀走势 · 全程累计折线 + 导管事件时间轴'));
 
-    const hint = U.el('div', 'dis-chart-hint', '▸ 点击图表查看全屏（支持悬停查看精确时间戳）');
+    const hint = U.el('div', 'dis-chart-hint', '▸ 点击图表查看全屏（支持 Ctrl+滚轮 缩放）');
     hint.style.cssText = 'margin-bottom:8px';
     section.appendChild(hint);
 
@@ -287,10 +293,8 @@ WF.disruptionView = (function () {
     scroll.style.cssText = 'overflow-x:auto;padding-bottom:6px';
     scroll.innerHTML = svgStr;
 
-    // tooltip 数据包（供内联图和全屏图共用）
-    const tipData = { ML, MT, plotH, plotW, xAxisY, W, dur, killTimes, totalKills };
     _addKillChartInteractivity(scroll.querySelector('svg'), tipData);
-    scroll.addEventListener('click', () => _showFullscreen(svgStr, tipData));
+    scroll.addEventListener('click', () => _showFullscreen(rec, baseW));
     section.appendChild(scroll);
 
     return section;
@@ -355,7 +359,8 @@ WF.disruptionView = (function () {
 
     hit.addEventListener('mousemove', e => {
       const rect = svgEl.getBoundingClientRect();
-      const svgW = parseFloat(svgEl.getAttribute('width') || svgEl.viewBox.baseVal.width);
+      // 始终用 viewBox 宽度作为 SVG 坐标空间，而非 width 属性（二者在缩放后可能不同）
+      const svgW = (svgEl.viewBox && svgEl.viewBox.baseVal.width) || parseFloat(svgEl.getAttribute('width'));
       const scaleX = svgW / rect.width;
       const svgX = (e.clientX - rect.left) * scaleX;
       const relT = Math.max(0, Math.min(td.dur, ((svgX - td.ML) / td.plotW) * td.dur));
@@ -388,16 +393,44 @@ WF.disruptionView = (function () {
   }
 
   // ── 全屏弹窗 ──────────────────────────────────────────────
-  function _showFullscreen(svgStr, tipData) {
+  function _showFullscreen(rec, baseW) {
     const overlay = U.el('div', 'dis-chart-overlay');
+    const modal   = U.el('div', 'dis-chart-modal');
 
-    const modal = U.el('div', 'dis-chart-modal');
-    modal.innerHTML = svgStr;
-    if (tipData) _addKillChartInteractivity(modal.querySelector('svg'), tipData);
+    // ≤45 轮初始宽度适配屏幕，>45 轮用 baseW（可横向滚动）
+    const fitW = Math.max(400, window.innerWidth - 68);
+    let currentW = rec.roundCount <= 45 ? fitW : baseW;
+
+    // 重新用新 W 生成 SVG 并注入 modal（元素坐标完整重算，非像素拉伸）
+    function rebuild() {
+      const { svgStr, tipData } = _buildChartSvgStr(rec, currentW);
+      modal.innerHTML = svgStr;
+      _addKillChartInteractivity(modal.querySelector('svg'), tipData);
+    }
+
+    rebuild();
     modal.addEventListener('click', e => e.stopPropagation());
+
+    // Ctrl+滚轮：横向无限拉宽（重新渲染），纵向随比例增长但不超过屏幕 80%
+    const MAX_H = Math.round(window.innerHeight * 0.8);
+    const STEP  = 1.2;
+    overlay.addEventListener('wheel', e => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      currentW = Math.max(300, Math.round(currentW * (e.deltaY < 0 ? STEP : 1 / STEP)));
+      rebuild();
+      // 高度随比例缩放，但上限为屏幕 80%
+      const svgEl = modal.querySelector('svg');
+      if (svgEl) {
+        const ratio = currentW / baseW;
+        const newH  = Math.min(MAX_H, Math.round(400 * ratio));
+        svgEl.setAttribute('height', Math.max(120, newH));
+      }
+    }, { passive: false });
+
     overlay.appendChild(modal);
 
-    overlay.appendChild(U.el('div', 'dis-chart-hint', '点击空白处 或 按 Esc 关闭'));
+    overlay.appendChild(U.el('div', 'dis-chart-hint', 'Ctrl+滚轮 缩放 · 点击空白处 或 Esc 关闭'));
 
     const close = () => {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -410,49 +443,50 @@ WF.disruptionView = (function () {
   }
 
   // ── Conduit effect helpers ────────────────────────────────
-  // Dangerous debuff IDs (highlighted yellow): 能量消耗(1)、敌人使用毒素武器(11)、群居狩猎野兽(26)
-  const BAD_IDS = new Set([1, 11, 26]);
+  // 危险减益 ID（黄色高亮）：能量值消耗=3，更强大的密钥搬运者=6，群居狩猎野兽=23
+  // 敌人毒素武器 ID 待校准后补充
+  const BAD_IDS = new Set([3, 6, 23]);
 
-  // Debuff ID → Chinese display name（按维基减益效果顺序排列，ID 映射待游戏内验证）
+  // 减益 ID → 中文名（已用实测 log 全面校准）
   const DEBUFF_NAMES = {
-    1:  '能量消耗',
-    2:  '护盾消耗',
-    3:  '生命值消耗',
-    4:  '敌人速度加成',
-    5:  '敌人伤害加成',
-    6:  '敌人护甲强化',
-    7:  '敌人护盾强化',
-    8:  '敌人使用火焰武器',
-    9:  '敌人使用冰冻武器',
-    10: '敌人使用电击武器',
-    11: '敌人使用毒素武器',
-    12: '敌人获得技能抗性',
-    13: '敌人获得伤害抗性',
-    14: '更强大的密钥输送者',
-    15: '卓越者攻击波',
-    16: '带电导管',
-    17: '安全警报',
-    18: '月震',
-    19: 'Sentient涌入',
-    20: '磁场异常',
-    21: '雷区',
-    22: '尸鬼暴穴',
-    23: '系统超载',
-    24: '机器人的猛攻',
-    25: '虚能导管',
-    26: '群居狩猎野兽',
-    27: '孵窠涌流',
+    1:  '护盾消耗',
+    2:  '生命值消耗',
+    3:  '能量值消耗',
+    4:  '敌人伤害加成',
+    5:  '待翻译',
+    6:  '更强大的密钥搬运者',
+    7:  '待翻译',
+    8:  '敌人技能抗性',
+    9:  '敌人速度加成',
+    10: '待翻译',
+    11: '待翻译',
+    12: '通电的导管',
+    13: '敌方火焰武器',
+    14: '敌方冰冻武器',
+    15: '待翻译',
+    16: '敌方电击武器',
+    17: '待翻译',
+    18: '待翻译',
+    19: '待翻译',
+    20: '待翻译',
+    21: '敌人护甲增强',
+    22: '待翻译',
+    23: '群居狩猎野兽',
+    24: '待翻译',
+    25: '雷区',
+    26: '待翻译',
+    27: '待翻译',
   };
 
-  // Buff ID → Chinese display name（按维基增益效果顺序排列）
+  // 增益 ID → 中文名（已用实测 log 全面校准）
   const BUFF_NAMES = {
-    31: '+50% 经验值加成',
-    32: '+50% 资源数量加成',
-    33: '+50% 现金数量加成',
-    34: 'Tenno获得武器吸血效果',
-    35: 'Tenno获得射速加成',
-    36: 'Tenno获得移动速度加成',
-    37: '补给导管',
+    31: '补给导管',
+    32: 'Tenno速度加成',
+    33: '50%经验值加成',
+    34: '50%资源加成',
+    35: '50%现金加成',
+    36: 'Tenno武器吸血加成',
+    37: 'Tenno射速加成',
     38: '导管卫士',
   };
 
@@ -461,10 +495,10 @@ WF.disruptionView = (function () {
   }
 
   function _effectName(c) {
-    if (c.effectKind === 'buff') {
-      return c.effectId != null ? (BUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
-    }
-    return c.effectId != null ? (DEBUFF_NAMES[c.effectId] || `待翻译 (ID:${c.effectId})`) : '—';
+    if (c.effectId == null) return '—';
+    const id = c.effectId;
+    if (c.effectKind === 'buff') return BUFF_NAMES[id] || '待翻译';
+    return DEBUFF_NAMES[id] || '待翻译';
   }
 
   function _conduitEffectLabel(c) {
@@ -473,9 +507,10 @@ WF.disruptionView = (function () {
   }
 
   function _conduitColor(c) {
-    if (c.success === false) return '#ff5f6b';   // 失守 → 红色（最高优先级）
-    if (_isBadDebuff(c))     return '#ffd700';   // 危险减益但守住 → 黄色
-    if (c.success === true)  return '#41ff8e';   // 普通成功 → 绿色
+    if (c.success === false && _isBadDebuff(c)) return '#c97fff'; // 危险减益且失守 → 紫色
+    if (c.success === false) return '#ff5f6b';                    // 普通失守 → 红色
+    if (_isBadDebuff(c))     return '#ffd700';                    // 危险减益但守住 → 黄色
+    if (c.success === true)  return '#41ff8e';                    // 普通成功 → 绿色
     return '#aaa';
   }
 
